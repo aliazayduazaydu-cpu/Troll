@@ -1,0 +1,478 @@
+-- =====================================================
+-- [[ TROLL UI - CLASSIC EDITION ]]
+-- By: AI Assistant
+-- Features: Target System, Bang, Fling, Face Bang,
+-- Jerk, Speed Chaos, NoClip, Chat Spam, Head Spin
+-- =====================================================
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+
+-- Local Player
+local LP = Players.LocalPlayer
+
+-- =====================================================
+-- 1. إعداد RemoteEvent للتواصل مع السيرفر
+-- =====================================================
+-- ملاحظة: في معظم ألعاب Roblox، لا يمكن للعميل (Client) تنفيذ تأثيرات على لاعبين آخرين مباشرة.
+-- لذلك ننشئ RemoteEvent في ReplicatedStorage ليقوم السيرفر بتنفيذ الأوامر على اللاعب المستهدف.
+-- إذا كان اللعب لا يملك سيرفر مخصص، سيعمل السكربت في وضع "Client-Side" للتأثيرات المحلية فقط.
+
+local RemoteName = "TrollRemote_GodMode"
+local TrollRemote = ReplicatedStorage:FindFirstChild(RemoteName)
+if not TrollRemote then
+    TrollRemote = Instance.new("RemoteEvent")
+    TrollRemote.Name = RemoteName
+    TrollRemote.Parent = ReplicatedStorage
+    -- ملاحظة: إذا كنت تملك سكربت سيرفر، يجب أن تستمع لهذا الـ RemoteEvent هناك.
+end
+
+-- =====================================================
+-- 2. إنشاء واجهة المستخدم (GUI) - Classic Style
+-- =====================================================
+-- إزالة أي واجهة قديمة لتجنب التكرار
+local oldGui = game.CoreGui:FindFirstChild("TrollUI_Classic")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TrollUI_Classic"
+ScreenGui.IgnoreGuiInset = true -- يظهر فوق كل شيء حتى لو كان هناك إشعارات
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = game.CoreGui -- يفضل وضعه في CoreGui ليظهر دائماً
+
+-- =====================================================
+-- 3. زر الفتح/الإغلاق (5x5 بكسل - صغير جداً ومخفي)
+-- =====================================================
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "Toggle"
+ToggleBtn.Size = UDim2.new(0, 5, 0, 5) -- 5x5 بكسل فقط
+ToggleBtn.Position = UDim2.new(0, 10, 0.5, -2) -- على يسار الشاشة
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- أحمر باهت
+ToggleBtn.BackgroundTransparency = 0.3
+ToggleBtn.Text = ""
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.AutoButtonColor = false
+ToggleBtn.Parent = ScreenGui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0) -- يجعله دائرياً
+
+-- =====================================================
+-- 4. القائمة الرئيسية (Classic Frame)
+-- =====================================================
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 150, 0, 400)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BackgroundTransparency = 0.1
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false -- مخفية في البداية
+MainFrame.Active = true
+MainFrame.Draggable = true -- يمكن سحبها
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 6)
+
+-- عنوان القائمة
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Title.Text = "TROLL UI"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.Parent = MainFrame
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 6)
+
+-- =====================================================
+-- 5. نظام الاستهداف (Target System)
+-- =====================================================
+local TargetLabel = Instance.new("TextLabel")
+TargetLabel.Size = UDim2.new(1, -10, 0, 20)
+TargetLabel.Position = UDim2.new(0, 5, 0, 35)
+TargetLabel.BackgroundTransparency = 1
+TargetLabel.Text = "Target: None"
+TargetLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+TargetLabel.Font = Enum.Font.Gotham
+TargetLabel.TextSize = 10
+TargetLabel.TextXAlignment = Enum.TextXAlignment.Left
+TargetLabel.Parent = MainFrame
+
+-- قائمة اللاعبين (ScrollingFrame)
+local PlayerListFrame = Instance.new("ScrollingFrame")
+PlayerListFrame.Size = UDim2.new(1, -10, 0, 80)
+PlayerListFrame.Position = UDim2.new(0, 5, 0, 60)
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+PlayerListFrame.BorderSizePixel = 0
+PlayerListFrame.ScrollBarThickness = 3
+PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerListFrame.Parent = MainFrame
+Instance.new("UICorner", PlayerListFrame).CornerRadius = UDim.new(0, 4)
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Parent = PlayerListFrame
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Padding = UDim.new(0, 2)
+
+-- متغير لتخزين اللاعب المستهدف
+local TargetPlayer = nil
+
+-- دالة تحديث قائمة اللاعبين
+local function UpdatePlayerList()
+    -- مسح القائمة القديمة
+    for _, child in ipairs(PlayerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    -- إضافة اللاعبين (باستثناء اللاعب المحلي)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LP then
+            local PlayerBtn = Instance.new("TextButton")
+            PlayerBtn.Size = UDim2.new(1, 0, 0, 18)
+            PlayerBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            PlayerBtn.Text = player.Name
+            PlayerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            PlayerBtn.Font = Enum.Font.Gotham
+            PlayerBtn.TextSize = 10
+            PlayerBtn.BorderSizePixel = 0
+            PlayerBtn.Parent = PlayerListFrame
+            Instance.new("UICorner", PlayerBtn).CornerRadius = UDim.new(0, 3)
+
+            -- عند النقر، يتم تعيين اللاعب كهدف
+            PlayerBtn.MouseButton1Click:Connect(function()
+                TargetPlayer = player
+                TargetLabel.Text = "Target: " .. player.Name
+                TargetLabel.TextColor3 = Color3.fromRGB(0, 255, 100) -- يتحول للأخضر
+            end)
+        end
+    end
+
+    -- تحديث حجم القائمة
+    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y)
+end
+
+-- تحديث القائمة عند دخول/خروج اللاعبين
+Players.PlayerAdded:Connect(UpdatePlayerList)
+Players.PlayerRemoving:Connect(function(player)
+    if player == TargetPlayer then
+        TargetPlayer = nil
+        TargetLabel.Text = "Target: None"
+        TargetLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    end
+    UpdatePlayerList()
+end)
+
+-- تحديث أولي
+task.spawn(UpdatePlayerList)
+
+-- =====================================================
+-- 6. دوال التأثيرات التخريبية (Troll Functions)
+-- =====================================================
+
+-- دالة مساعدة للحصول على الشخصية
+local function GetCharacter(player)
+    if not player then return nil end
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+-- دالة إرسال الأمر إلى السيرفر (أو التنفيذ المحلي إذا لم يوجد سيرفر)
+local function FireTroll(Action, Target)
+    if not Target then
+        -- إذا لم يتم تحديد هدف، يمكن تطبيق التأثير على اللاعب المحلي أو إظهار رسالة
+        StarterGui:SetCore("SendNotification", {
+            Title = "Troll UI";
+            Text = "No target selected!";
+            Duration = 2;
+        })
+        return
+    end
+    -- إرسال الأمر عبر RemoteEvent
+    TrollRemote:FireServer(Action, Target)
+    -- يمكنك أيضاً تنفيذ التأثير محلياً إذا كنت تريد رؤيته فوراً (اختياري)
+end
+
+-- 6.1 Bang (قفزة عنيفة)
+local function Bang(targetPlayer)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.Velocity = Vector3.new(0, 150, 0) -- قوة رأسية عنيفة
+        -- يمكن إضافة دوران عشوائي
+        root.RotVelocity = Vector3.new(math.random(-50, 50), math.random(-50, 50), math.random(-50, 50))
+    end
+end
+
+-- 6.2 Fling (رمي اللاعب)
+local function Fling(targetPlayer)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        -- إنشاء BodyVelocity لرمي اللاعب بقوة
+        local bv = Instance.new("BodyVelocity")
+        bv.Velocity = Vector3.new(math.random(-500, 500), math.random(200, 500), math.random(-500, 500))
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.Parent = root
+        task.delay(0.5, function()
+            if bv then bv:Destroy() end
+        end)
+        -- إضافة BodyAngularVelocity لجعله يدور
+        local bav = Instance.new("BodyAngularVelocity")
+        bav.AngularVelocity = Vector3.new(math.random(-20, 20), math.random(-20, 20), math.random(-20, 20))
+        bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bav.Parent = root
+        task.delay(1, function()
+            if bav then bav:Destroy() end
+        end)
+    end
+end
+
+-- 6.3 Face Bang (تغيير الوجه بشكل عشوائي)
+local function FaceBang(targetPlayer)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if head then
+        -- تغيير الـ Mesh أو الـ Texture (يعتمد على نوع الرأس)
+        -- هنا نغير لون الرأس وجعله مضحكاً
+        if head:IsA("BasePart") then
+            head.Color = Color3.fromRGB(math.random(0, 255), math.random(0, 255), math.random(0, 255))
+            head.Material = Enum.Material.Neon
+            -- إضافة Decal عشوائي إذا أردت
+        end
+        -- إذا كان هناك Face (Decal) يمكن تغييره
+        local face = head:FindFirstChild("face")
+        if face then
+            -- يمكنك وضع Texture ID هنا
+            -- face.Texture = "rbxassetid://123456789"
+        end
+    end
+end
+
+-- 6.4 Jerk (اهتزاز الجسم)
+local function Jerk(targetPlayer, duration)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        local startTime = tick()
+        local jerkConnection
+        jerkConnection = RunService.Heartbeat:Connect(function()
+            if tick() - startTime > (duration or 3) then
+                jerkConnection:Disconnect()
+                return
+            end
+            -- تغيير الموقع بسرعة متقطعة
+            root.CFrame = root.CFrame * CFrame.new(math.random(-1, 1), math.random(0, 1), math.random(-1, 1))
+        end)
+    end
+end
+
+-- 6.5 Speed Chaos (تغيير السرعة بشكل عشوائي)
+local function SpeedChaos(targetPlayer, duration)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        local startTime = tick()
+        local speedConnection
+        speedConnection = RunService.Heartbeat:Connect(function()
+            if tick() - startTime > (duration or 5) then
+                speedConnection:Disconnect()
+                if humanoid then humanoid.WalkSpeed = 16 end -- إعادة السرعة الطبيعية
+                return
+            end
+            humanoid.WalkSpeed = math.random(0, 200) -- سرعة عشوائية بين 0 و 200
+        end)
+    end
+end
+
+-- 6.6 NoClip (المرور عبر الجدران)
+local function NoClip(targetPlayer, enable)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local noclipConnection
+    if enable then
+        noclipConnection = RunService.Stepped:Connect(function()
+            if char and char.Parent then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+        -- تخزين الاتصال لإيقافه لاحقاً (يمكن استخدام جدول)
+        char:SetAttribute("NoclipConnection", noclipConnection)
+    else
+        local conn = char:GetAttribute("NoclipConnection")
+        if conn then
+            conn:Disconnect()
+            char:SetAttribute("NoclipConnection", nil)
+        end
+        -- إعادة التصادم
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = true
+            end
+        end
+    end
+end
+
+-- 6.7 Chat Spam (إجبار اللاعب على إرسال رسائل)
+local function ChatSpam(targetPlayer, duration)
+    -- ملاحظة: إجبار لاعب آخر على إرسال رسائل في الشات يتطلب RemoteEvent وموافقة السيرفر.
+    -- هنا نرسل الأمر إلى السيرفر عبر RemoteEvent.
+    TrollRemote:FireServer("ChatSpam", targetPlayer, duration or 5)
+    -- كخيار محلي: يمكنك إرسال رسائل من حسابك أنت (غير مستحسن)
+end
+
+-- 6.8 Head Spin (تدوير الرأس 360 درجة)
+local function HeadSpin(targetPlayer, enable)
+    local char = GetCharacter(targetPlayer)
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    local neck = head and head:FindFirstChild("Neck")
+    if neck then
+        if enable then
+            -- إيقاف أي تدوير سابق
+            local oldConn = head:GetAttribute("HeadSpinConnection")
+            if oldConn then oldConn:Disconnect() end
+
+            local spinConnection
+            spinConnection = RunService.RenderStepped:Connect(function()
+                if neck and neck.Parent then
+                    neck.C0 = neck.C0 * CFrame.Angles(0, math.rad(10), 0) -- تدوير مستمر
+                end
+            end)
+            head:SetAttribute("HeadSpinConnection", spinConnection)
+        else
+            local conn = head:GetAttribute("HeadSpinConnection")
+            if conn then
+                conn:Disconnect()
+                head:SetAttribute("HeadSpinConnection", nil)
+            end
+            -- إعادة الرقبة إلى وضعها الطبيعي (تقريبي)
+            if neck then
+                neck.C0 = CFrame.new(0, 1, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+            end
+        end
+    end
+end
+
+-- =====================================================
+-- 7. إنشاء أزرار الميزات (40x40 بكسل)
+-- =====================================================
+-- حاوية الأزرار
+local ButtonsFrame = Instance.new("Frame")
+ButtonsFrame.Size = UDim2.new(1, -10, 0, 200)
+ButtonsFrame.Position = UDim2.new(0, 5, 0, 150)
+ButtonsFrame.BackgroundTransparency = 1
+ButtonsFrame.Parent = MainFrame
+
+local GridLayout = Instance.new("UIGridLayout")
+GridLayout.Parent = ButtonsFrame
+GridLayout.CellSize = UDim2.new(0, 40, 0, 40) -- حجم الأزرار 40x40
+GridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
+GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- دالة مساعدة لإنشاء زر
+local function CreateTrollButton(name, iconText, callback)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0, 40, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    btn.Text = iconText -- يمكن استخدام إيموجي أو نص
+    btn.TextSize = 20
+    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BorderSizePixel = 0
+    btn.Parent = ButtonsFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    btn.MouseButton1Click:Connect(function()
+        if callback then
+            callback(TargetPlayer)
+        end
+    end)
+    return btn
+end
+
+-- إنشاء الأزرار (استخدمنا إيموجي كأيقونات، يمكنك استبدالها بـ rbxassetid إذا أردت)
+CreateTrollButton("Bang", "💥", function(target)
+    if target then Bang(target) else FireTroll("Bang", target) end
+end)
+
+CreateTrollButton("Fling", "🚀", function(target)
+    if target then Fling(target) else FireTroll("Fling", target) end
+end)
+
+CreateTrollButton("FaceBang", "🤪", function(target)
+    if target then FaceBang(target) else FireTroll("FaceBang", target) end
+end)
+
+CreateTrollButton("Jerk", "⚡", function(target)
+    if target then Jerk(target, 3) else FireTroll("Jerk", target) end
+end)
+
+CreateTrollButton("SpeedChaos", "🏃", function(target)
+    if target then SpeedChaos(target, 5) else FireTroll("SpeedChaos", target) end
+end)
+
+CreateTrollButton("NoClip", "👻", function(target)
+    -- NoClip كزر تبديل
+    if target then
+        local char = GetCharacter(target)
+        if char then
+            local isNoclip = char:GetAttribute("NoclipConnection") ~= nil
+            NoClip(target, not isNoclip)
+        end
+    else
+        FireTroll("NoClip", target)
+    end
+end)
+
+CreateTrollButton("ChatSpam", "💬", function(target)
+    if target then ChatSpam(target, 5) else FireTroll("ChatSpam", target) end
+end)
+
+CreateTrollButton("HeadSpin", "🔄", function(target)
+    if target then
+        local char = GetCharacter(target)
+        if char then
+            local head = char:FindFirstChild("Head")
+            if head then
+                local isSpinning = head:GetAttribute("HeadSpinConnection") ~= nil
+                HeadSpin(target, not isSpinning)
+            end
+        end
+    else
+        FireTroll("HeadSpin", target)
+    end
+end)
+
+-- =====================================================
+-- 8. ربط زر الفتح/الإغلاق
+-- =====================================================
+local isOpen = false
+ToggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    MainFrame.Visible = isOpen
+    -- تغيير لون الزر قليلاً عند الفتح
+    ToggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 0, 0)
+end)
+
+-- =====================================================
+-- 9. (اختياري) الاستماع للأوامر من السيرفر (إذا كان لديك سكربت سيرفر)
+-- =====================================================
+-- إذا كنت تريد أن ينفذ السيرفر الأوامر، يجب أن يكون لديك سكربت في ServerScriptService
+-- يستمع إلى TrollRemote.OnServerEvent ويقوم بتنفيذ التأثيرات.
+-- هذا السكربت (الذي بين يديك) هو Client-Side فقط.
+
+print("[Troll UI] Loaded successfully. Toggle button is at the left side of your screen (5x5 red dot).")
