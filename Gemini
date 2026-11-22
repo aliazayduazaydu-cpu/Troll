@@ -1,0 +1,439 @@
+--[[
+    Classic Mini Troll UI (40x40 Grid + 5x5 Toggle)
+    يدعم التحديث التلقائي للاعبين ويعمل فوق جميع واجهات ScreenGui
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local SelectedTarget = nil
+
+-- متغيرات التحكم بالحالات النشطة (Toggles)
+local States = {
+    NoClip = false,
+    SpeedChaos = false,
+    HeadSpin = false,
+    Jerk = false,
+    Orbit = false,
+    ChatSpam = false,
+    Flinging = false
+}
+
+-- 1. إنشاء الواجهة الرئيسية بأعلى أولوية ظهور
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ClassicMiniTrollUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999 -- يضمن الظهور فوق جميع واجهات اللعبة
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- محاولة الوضع في CoreGui لتجنب الحذف، أو PlayerGui كبديل
+pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- 2. زر الفتح/الإغلاق الصغير جداً (5x5 بكسل) في الزاوية العلوية اليسرى
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "MiniToggle"
+ToggleBtn.Size = UDim2.new(0, 5, 0, 5)
+ToggleBtn.Position = UDim2.new(0, 8, 0, 8)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 30, 30)
+ToggleBtn.BorderSizePixel = 1
+ToggleBtn.BorderColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Text = ""
+ToggleBtn.ZIndex = 10
+ToggleBtn.Parent = ScreenGui
+
+-- 3. الإطار الرئيسي للقائمة (Classic Style)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 310, 0, 215)
+MainFrame.Position = UDim2.new(0.5, -155, 0.5, -107)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = Color3.fromRGB(90, 90, 100)
+MainFrame.Active = true
+MainFrame.Draggable = true -- قابل للسحب باللمس والماوس
+MainFrame.Parent = ScreenGui
+
+-- ربط زر الـ 5x5 بفتح وإغلاق القائمة
+ToggleBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- شريط العنوان وحالة الهدف
+local TitleBar = Instance.new("TextLabel")
+TitleBar.Size = UDim2.new(1, 0, 0, 22)
+TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+TitleBar.BorderSizePixel = 0
+TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleBar.Font = Enum.Font.SourceSansBold
+TitleBar.TextSize = 13
+TitleBar.Text = " CLASSIC TROLL | الهدف: أقرب لاعب"
+TitleBar.TextXAlignment = Enum.TextXAlignment.Left
+TitleBar.Parent = MainFrame
+
+-- 4. القائمة الجانبية لاختيار اللاعبين (Target List)
+local PlayerListFrame = Instance.new("ScrollingFrame")
+PlayerListFrame.Name = "TargetList"
+PlayerListFrame.Size = UDim2.new(0, 115, 1, -26)
+PlayerListFrame.Position = UDim2.new(0, 4, 0, 24)
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+PlayerListFrame.BorderColor3 = Color3.fromRGB(70, 70, 80)
+PlayerListFrame.ScrollBarThickness = 4
+PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PlayerListFrame.Parent = MainFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 2)
+ListLayout.Parent = PlayerListFrame
+
+-- 5. حاوية الأزرار (Grid بحجم 40x40 لكل زر)
+local ButtonsContainer = Instance.new("Frame")
+ButtonsContainer.Name = "ButtonsGrid"
+ButtonsContainer.Size = UDim2.new(1, -127, 1, -26)
+ButtonsContainer.Position = UDim2.new(0, 123, 0, 24)
+ButtonsContainer.BackgroundTransparency = 1
+ButtonsContainer.Parent = MainFrame
+
+local GridLayout = Instance.new("UIGridLayout")
+GridLayout.CellSize = UDim2.new(0, 40, 0, 40) -- حجم الأزرار 40x40 بكسل بدقة
+GridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
+GridLayout.Parent = ButtonsContainer
+
+-- دالة مساعدة للحصول على الهدف الحالي أو أقرب لاعب تلقائياً
+local function GetTarget()
+    if SelectedTarget and SelectedTarget.Parent == Players and SelectedTarget.Character and SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
+        return SelectedTarget
+    end
+    
+    -- البحث عن أقرب لاعب في حال عدم تحديد هدف
+    local nearestPlayer = nil
+    local shortestDist = math.huge
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if myRoot then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (plr.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    nearestPlayer = plr
+                end
+            end
+        end
+    end
+    
+    if nearestPlayer then
+        TitleBar.Text = " الهدف (تلقائي): " .. nearestPlayer.Name
+    else
+        TitleBar.Text = " خطأ: لا يوجد لاعبون قريبون!"
+    end
+    return nearestPlayer
+end
+
+-- تحديث قائمة اللاعبين الجانبية
+local function RefreshPlayerList()
+    for _, child in ipairs(PlayerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, -4, 0, 22)
+            btn.BackgroundColor3 = (SelectedTarget == plr) and Color3.fromRGB(170, 40, 40) or Color3.fromRGB(40, 40, 48)
+            btn.BorderColor3 = Color3.fromRGB(80, 80, 90)
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.Font = Enum.Font.SourceSans
+            btn.TextSize = 12
+            btn.Text = plr.DisplayName
+            btn.TextTruncate = Enum.TextTruncate.AtEnd
+            btn.Parent = PlayerListFrame
+
+            btn.MouseButton1Click:Connect(function()
+                if SelectedTarget == plr then
+                    SelectedTarget = nil
+                    TitleBar.Text = " الهدف: أقرب لاعب (تلقائي)"
+                else
+                    SelectedTarget = plr
+                    TitleBar.Text = " الهدف المحدد: " .. plr.Name
+                end
+                RefreshPlayerList()
+            end)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(RefreshPlayerList)
+Players.PlayerRemoving:Connect(function(plr)
+    if SelectedTarget == plr then
+        SelectedTarget = nil
+        TitleBar.Text = " خرج الهدف! التبديل للتلقائي"
+    end
+    RefreshPlayerList()
+end)
+RefreshPlayerList()
+
+-- دالة إنشاء زر 40x40 بأيقونة روبلوكس رسمية
+local function CreateTrollButton(name, assetId, isToggle, callback)
+    local btn = Instance.new("ImageButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0, 40, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+    btn.BorderSizePixel = 1
+    btn.BorderColor3 = Color3.fromRGB(100, 100, 110)
+    btn.Image = assetId
+    btn.Parent = ButtonsContainer
+
+    -- نص صغير أسفل الأيقونة لتوضيح الوظيفة
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 11)
+    label.Position = UDim2.new(0, 0, 1, -11)
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    label.BackgroundTransparency = 0.35
+    label.BorderSizePixel = 0
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 9
+    label.Text = name
+    label.Parent = btn
+
+    local active = false
+    btn.MouseButton1Click:Connect(function()
+        if isToggle then
+            active = not active
+            btn.BackgroundColor3 = active and Color3.fromRGB(180, 40, 40) or Color3.fromRGB(45, 45, 52)
+            callback(active)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(200, 120, 30)
+            task.delay(0.2, function()
+                btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+            end)
+            callback()
+        end
+    end)
+    return btn
+end
+
+---------------------------------------------------------------------
+-- الحلقات المستمرة للمميزات (RunService Loops)
+---------------------------------------------------------------------
+
+-- NoClip (المرور عبر الجدران)
+RunService.Stepped:Connect(function()
+    if States.NoClip and LocalPlayer.Character then
+        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- Speed Chaos + Head Spin + Jerk + Orbit
+local orbitAngle = 0
+RunService.Heartbeat:Connect(function(dt)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- 1. Speed Chaos: تغيير عشوائي مستمر للسرعة
+    if States.SpeedChaos and hum then
+        hum.WalkSpeed = math.random(6, 130)
+    end
+
+    -- 2. Head Spin: تدوير الرأس 360 درجة باستمرار
+    if States.HeadSpin and char then
+        local neck = char:FindFirstChild("Neck", true)
+        if neck and neck:IsA("Motor6D") then
+            neck.C0 = neck.C0 * CFrame.Angles(0, math.rad(25), 0)
+        end
+    end
+
+    -- 3. Jerk: اهتزاز عنيف ومتقطع للموقع حول الهدف أو في المكان
+    if States.Jerk and root then
+        local target = GetTarget()
+        local baseCFrame = (target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")) 
+            and target.Character.HumanoidRootPart.CFrame 
+            or root.CFrame
+        local offset = Vector3.new(math.random(-3, 3), math.random(-1, 2), math.random(-3, 3))
+        root.CFrame = baseCFrame * CFrame.new(offset)
+    end
+
+    -- 4. Orbit: الدوران السريع حول الهدف لإرباكه
+    if States.Orbit and root then
+        local target = GetTarget()
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            orbitAngle = orbitAngle + (dt * 12)
+            local tRoot = target.Character.HumanoidRootPart
+            local pos = tRoot.Position + Vector3.new(math.cos(orbitAngle) * 4, 0, math.sin(orbitAngle) * 4)
+            root.CFrame = CFrame.new(pos, tRoot.Position)
+        end
+    end
+end)
+
+-- Chat Spam Loop (إرسال رسائل متكررة في الشات العام)
+task.spawn(function()
+    local messages = {
+        "TROLLED!",
+        "Catch me if you can!",
+        "Chaos Mode Activated!",
+        "Too slow!",
+        "System Glitch!"
+    }
+    while task.wait(1.5) do
+        if States.ChatSpam then
+            local target = GetTarget()
+            local prefix = target and ("[" .. target.DisplayName .. "] ") or ""
+            local msg = prefix .. messages[math.random(1, #messages)]
+            
+            -- دعم نظام الشات الحديث والقديم في روبلوكس
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+                if channel then channel:SendAsync(msg) end
+            else
+                local sayEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+                if sayEvent and sayEvent:FindFirstChild("SayMessageRequest") then
+                    sayEvent.SayMessageRequest:FireServer(msg, "All")
+                end
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------------------
+-- تعريف الأزرار (40x40) مع أيقونات روبلوكس الرسمية
+---------------------------------------------------------------------
+
+-- 1. Bang (قذيفة صعود مفاجئة عند الهدف)
+CreateTrollButton("Bang", "rbxassetid://133293265", false, function()
+    local target = GetTarget()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if target and target.Character and root then
+        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+        if tRoot then
+            local oldPos = root.CFrame
+            root.CFrame = tRoot.CFrame * CFrame.new(0, -1.5, 0)
+            root.AssemblyLinearVelocity = Vector3.new(0, 180, 0)
+            task.wait(0.25)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.CFrame = oldPos
+        end
+    end
+end)
+
+-- 2. Fling (رمي الهدف بقوة دوران عالية)
+CreateTrollButton("Fling", "rbxassetid://4370318685", false, function()
+    local target = GetTarget()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if target and target.Character and root then
+        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+        if tRoot then
+            local oldPos = root.CFrame
+            local bav = Instance.new("BodyAngularVelocity")
+            bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bav.AngularVelocity = Vector3.new(0, 99999, 0)
+            bav.Parent = root
+
+            local startTime = tick()
+            while tick() - startTime < 0.8 and tRoot.Parent do
+                root.CFrame = tRoot.CFrame
+                RunService.Heartbeat:Wait()
+            end
+
+            bav:Destroy()
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            root.CFrame = oldPos
+        end
+    end
+end)
+
+-- 3. FaceBang (الالتصاق برأس الهدف وتشويه الرؤية)
+CreateTrollButton("FaceBang", "rbxassetid://7072716017", false, function()
+    local target = GetTarget()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if target and target.Character and root then
+        local tHead = target.Character:FindFirstChild("Head")
+        if tHead then
+            for i = 1, 20 do
+                root.CFrame = tHead.CFrame * CFrame.new(0, 0, -1.2) * CFrame.Angles(0, math.pi, 0)
+                task.wait(0.05)
+            end
+        end
+    end
+end)
+
+-- 4. Jerk (اهتزاز وتشنج متقطع)
+CreateTrollButton("Jerk", "rbxassetid://7072721559", true, function(state)
+    States.Jerk = state
+end)
+
+-- 5. SpeedChaos (سرعة عشوائية جنونية)
+CreateTrollButton("Speed", "rbxassetid://7072722963", true, function(state)
+    States.SpeedChaos = state
+    if not state and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end
+end)
+
+-- 6. NoClip (اختراق الجدران)
+CreateTrollButton("NoClip", "rbxassetid://7072718266", true, function(state)
+    States.NoClip = state
+end)
+
+-- 7. ChatSpam (إرسال رسائل متكررة)
+CreateTrollButton("Spam", "rbxassetid://7072706620", true, function(state)
+    States.ChatSpam = state
+end)
+
+-- 8. HeadSpin (تدوير الرأس 360 درجة)
+CreateTrollButton("HeadSpin", "rbxassetid://7072721682", true, function(state)
+    States.HeadSpin = state
+end)
+
+-- 9. Orbit (ميزة إضافية: الدوران السريع حول الهدف)
+CreateTrollButton("Orbit", "rbxassetid://7072719338", true, function(state)
+    States.Orbit = state
+end)
+
+-- 10. Bring TP (ميزة إضافية: الانتقال الفوري لظهر الهدف)
+CreateTrollButton("TP Behind", "rbxassetid://7072724538", false, function()
+    local target = GetTarget()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if target and target.Character and root then
+        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+        if tRoot then
+            root.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2.5)
+        end
+    end
+end)
+
+-- 11. Stop All (إيقاف جميع التأثيرات فوراً)
+CreateTrollButton("StopAll", "rbxassetid://7072725342", false, function()
+    for k in pairs(States) do
+        States[k] = false
+    end
+    for _, btn in ipairs(ButtonsContainer:GetChildren()) do
+        if btn:IsA("ImageButton") then
+            btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+        end
+    end
+    if LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end
+end)
