@@ -1,6 +1,9 @@
 --[[
-    Classic Mini Troll UI (40x40 Grid + 5x5 Toggle)
-    يدعم التحديث التلقائي للاعبين ويعمل فوق جميع واجهات ScreenGui
+    Classic Troll Suite - 84 Target Features Edition
+    - زر فتح/إغلاق أكبر وأسهل للتحكم (28x28)
+    - 84 ميزة متنوعة تستهدف Target أو أقرب لاعب تلقائياً
+    - قائمة جانبية ديناميكية للاعبين + شريط بحث سريع عن هدف
+    - أولوية عرض قصوى فوق جميع واجهات ScreenGui
 ]]
 
 local Players = game:GetService("Players")
@@ -12,25 +15,16 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local SelectedTarget = nil
 
--- متغيرات التحكم بالحالات النشطة (Toggles)
-local States = {
-    NoClip = false,
-    SpeedChaos = false,
-    HeadSpin = false,
-    Jerk = false,
-    Orbit = false,
-    ChatSpam = false,
-    Flinging = false
-}
+-- جدول حالات التشغيل المستمر للمميزات
+local Active = {}
 
 -- 1. إنشاء الواجهة الرئيسية بأعلى أولوية ظهور
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ClassicMiniTrollUI"
+ScreenGui.Name = "ClassicTroll84Suite"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999 -- يضمن الظهور فوق جميع واجهات اللعبة
+ScreenGui.DisplayOrder = 999999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- محاولة الوضع في CoreGui لتجنب الحذف، أو PlayerGui كبديل
 pcall(function()
     ScreenGui.Parent = CoreGui
 end)
@@ -38,402 +32,910 @@ if not ScreenGui.Parent then
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- 2. زر الفتح/الإغلاق الصغير جداً (5x5 بكسل) في الزاوية العلوية اليسرى
+-- 2. زر الفتح/الإغلاق المكبّر (28x28 بكسل) وقابل للسحب
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "MiniToggle"
-ToggleBtn.Size = UDim2.new(0, 5, 0, 5)
-ToggleBtn.Position = UDim2.new(0, 8, 0, 8)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 30, 30)
-ToggleBtn.BorderSizePixel = 1
-ToggleBtn.BorderColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Text = ""
-ToggleBtn.ZIndex = 10
+ToggleBtn.Name = "BigClassicToggle"
+ToggleBtn.Size = UDim2.new(0, 28, 0, 28)
+ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(190, 35, 35)
+ToggleBtn.BorderSizePixel = 2
+ToggleBtn.BorderColor3 = Color3.fromRGB(235, 235, 240)
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.TextSize = 15
+ToggleBtn.Text = "T"
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true
+ToggleBtn.ZIndex = 20
 ToggleBtn.Parent = ScreenGui
 
--- 3. الإطار الرئيسي للقائمة (Classic Style)
+-- 3. الإطار الرئيسي للقائمة الكلاسيكية
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 310, 0, 215)
-MainFrame.Position = UDim2.new(0.5, -155, 0.5, -107)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+MainFrame.Name = "MainClassicFrame"
+MainFrame.Size = UDim2.new(0, 420, 0, 265)
+MainFrame.Position = UDim2.new(0.5, -210, 0.5, -132)
+MainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Color3.fromRGB(90, 90, 100)
+MainFrame.BorderColor3 = Color3.fromRGB(95, 95, 105)
 MainFrame.Active = true
-MainFrame.Draggable = true -- قابل للسحب باللمس والماوس
+MainFrame.Draggable = true
+MainFrame.ZIndex = 10
 MainFrame.Parent = ScreenGui
 
--- ربط زر الـ 5x5 بفتح وإغلاق القائمة
 ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
 
--- شريط العنوان وحالة الهدف
+-- شريط العنوان ومعلومات الهدف
 local TitleBar = Instance.new("TextLabel")
-TitleBar.Size = UDim2.new(1, 0, 0, 22)
-TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+TitleBar.Size = UDim2.new(1, -28, 0, 22)
+TitleBar.Position = UDim2.new(0, 0, 0, 0)
+TitleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 TitleBar.BorderSizePixel = 0
 TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleBar.Font = Enum.Font.SourceSansBold
 TitleBar.TextSize = 13
-TitleBar.Text = " CLASSIC TROLL | الهدف: أقرب لاعب"
+TitleBar.Text = " CLASSIC 84 TROLL | الهدف: أقرب لاعب (تلقائي)"
 TitleBar.TextXAlignment = Enum.TextXAlignment.Left
+TitleBar.TextTruncate = Enum.TextTruncate.AtEnd
+TitleBar.ZIndex = 11
 TitleBar.Parent = MainFrame
 
--- 4. القائمة الجانبية لاختيار اللاعبين (Target List)
+-- زر إغلاق سريع داخل النافذة
+local CloseInsideBtn = Instance.new("TextButton")
+CloseInsideBtn.Size = UDim2.new(0, 28, 0, 22)
+CloseInsideBtn.Position = UDim2.new(1, -28, 0, 0)
+CloseInsideBtn.BackgroundColor3 = Color3.fromRGB(140, 30, 30)
+CloseInsideBtn.BorderSizePixel = 0
+CloseInsideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseInsideBtn.Font = Enum.Font.SourceSansBold
+CloseInsideBtn.TextSize = 13
+CloseInsideBtn.Text = "X"
+CloseInsideBtn.ZIndex = 11
+CloseInsideBtn.Parent = MainFrame
+
+CloseInsideBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+-- 4. قسم الهدف الجانبي (بحث + قائمة اللاعبين)
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(0, 128, 0, 20)
+SearchBox.Position = UDim2.new(0, 5, 0, 26)
+SearchBox.BackgroundColor3 = Color3.fromRGB(38, 38, 44)
+SearchBox.BorderColor3 = Color3.fromRGB(85, 85, 95)
+SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchBox.PlaceholderColor3 = Color3.fromRGB(165, 165, 175)
+SearchBox.PlaceholderText = "بحث عن هدف..."
+SearchBox.Font = Enum.Font.SourceSans
+SearchBox.TextSize = 12
+SearchBox.Text = ""
+SearchBox.ClearTextOnFocus = false
+SearchBox.ZIndex = 11
+SearchBox.Parent = MainFrame
+
 local PlayerListFrame = Instance.new("ScrollingFrame")
-PlayerListFrame.Name = "TargetList"
-PlayerListFrame.Size = UDim2.new(0, 115, 1, -26)
-PlayerListFrame.Position = UDim2.new(0, 4, 0, 24)
+PlayerListFrame.Name = "PlayerListFrame"
+PlayerListFrame.Size = UDim2.new(0, 128, 1, -52)
+PlayerListFrame.Position = UDim2.new(0, 5, 0, 48)
 PlayerListFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
 PlayerListFrame.BorderColor3 = Color3.fromRGB(70, 70, 80)
 PlayerListFrame.ScrollBarThickness = 4
 PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 PlayerListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PlayerListFrame.ZIndex = 11
 PlayerListFrame.Parent = MainFrame
 
 local ListLayout = Instance.new("UIListLayout")
 ListLayout.Padding = UDim.new(0, 2)
 ListLayout.Parent = PlayerListFrame
 
--- 5. حاوية الأزرار (Grid بحجم 40x40 لكل زر)
-local ButtonsContainer = Instance.new("Frame")
-ButtonsContainer.Name = "ButtonsGrid"
-ButtonsContainer.Size = UDim2.new(1, -127, 1, -26)
-ButtonsContainer.Position = UDim2.new(0, 123, 0, 24)
-ButtonsContainer.BackgroundTransparency = 1
-ButtonsContainer.Parent = MainFrame
+-- 5. شبكة المميزات القابلة للتمرير (84 ميزة)
+local FeaturesScroll = Instance.new("ScrollingFrame")
+FeaturesScroll.Name = "FeaturesScroll"
+FeaturesScroll.Size = UDim2.new(1, -142, 1, -28)
+FeaturesScroll.Position = UDim2.new(0, 138, 0, 25)
+FeaturesScroll.BackgroundColor3 = Color3.fromRGB(23, 23, 27)
+FeaturesScroll.BorderColor3 = Color3.fromRGB(70, 70, 80)
+FeaturesScroll.ScrollBarThickness = 5
+FeaturesScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+FeaturesScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+FeaturesScroll.ZIndex = 11
+FeaturesScroll.Parent = MainFrame
 
 local GridLayout = Instance.new("UIGridLayout")
-GridLayout.CellSize = UDim2.new(0, 40, 0, 40) -- حجم الأزرار 40x40 بكسل بدقة
-GridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
-GridLayout.Parent = ButtonsContainer
+GridLayout.CellSize = UDim2.new(0, 88, 0, 26)
+GridLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+GridLayout.Parent = FeaturesScroll
 
--- دالة مساعدة للحصول على الهدف الحالي أو أقرب لاعب تلقائياً
-local function GetTarget()
-    if SelectedTarget and SelectedTarget.Parent == Players and SelectedTarget.Character and SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
-        return SelectedTarget
+-- دوال مساعدة للحصول على مكونات الهدف واللاعب المحلي
+local function GetMyParts()
+    local char = LocalPlayer.Character
+    if not char then return nil, nil, nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local head = char:FindFirstChild("Head")
+    return char, root, hum, head
+end
+
+local function GetTargetPlayer()
+    if SelectedTarget and SelectedTarget.Parent == Players and SelectedTarget.Character then
+        local tRoot = SelectedTarget.Character:FindFirstChild("HumanoidRootPart")
+        if tRoot then
+            return SelectedTarget
+        end
     end
-    
-    -- البحث عن أقرب لاعب في حال عدم تحديد هدف
-    local nearestPlayer = nil
-    local shortestDist = math.huge
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    
-    if myRoot then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                local dist = (plr.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
-                if dist < shortestDist then
-                    shortestDist = dist
-                    nearestPlayer = plr
+
+    local _, myRoot = GetMyParts()
+    local nearest = nil
+    local shortest = math.huge
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local tRoot = plr.Character:FindFirstChild("HumanoidRootPart")
+            if tRoot then
+                local dist = myRoot and (tRoot.Position - myRoot.Position).Magnitude or 0
+                if dist < shortest then
+                    shortest = dist
+                    nearest = plr
                 end
             end
         end
     end
-    
-    if nearestPlayer then
-        TitleBar.Text = " الهدف (تلقائي): " .. nearestPlayer.Name
+
+    if nearest then
+        TitleBar.Text = " CLASSIC 84 TROLL | تلقائي: " .. nearest.Name
     else
-        TitleBar.Text = " خطأ: لا يوجد لاعبون قريبون!"
+        TitleBar.Text = " CLASSIC 84 TROLL | لا يوجد هدف!"
     end
-    return nearestPlayer
+    return nearest
 end
 
--- تحديث قائمة اللاعبين الجانبية
-local function RefreshPlayerList()
+local function GetTargetParts()
+    local plr = GetTargetPlayer()
+    if not plr or not plr.Character then return nil, nil, nil, nil end
+    local tChar = plr.Character
+    local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+    local tHum = tChar:FindFirstChildOfClass("Humanoid")
+    local tHead = tChar:FindFirstChild("Head")
+    return plr, tChar, tRoot, tHum, tHead
+end
+
+-- تحديث قائمة اللاعبين
+local function RefreshPlayers()
     for _, child in ipairs(PlayerListFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
 
+    local query = string.lower(SearchBox.Text)
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, -4, 0, 22)
-            btn.BackgroundColor3 = (SelectedTarget == plr) and Color3.fromRGB(170, 40, 40) or Color3.fromRGB(40, 40, 48)
-            btn.BorderColor3 = Color3.fromRGB(80, 80, 90)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.Font = Enum.Font.SourceSans
-            btn.TextSize = 12
-            btn.Text = plr.DisplayName
-            btn.TextTruncate = Enum.TextTruncate.AtEnd
-            btn.Parent = PlayerListFrame
+            local matchName = string.find(string.lower(plr.Name), query, 1, true)
+            local matchDisplay = string.find(string.lower(plr.DisplayName), query, 1, true)
+            if query == "" or matchName or matchDisplay then
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, -4, 0, 22)
+                btn.BackgroundColor3 = (SelectedTarget == plr) and Color3.fromRGB(175, 40, 40) or Color3.fromRGB(40, 40, 48)
+                btn.BorderColor3 = Color3.fromRGB(85, 85, 95)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                btn.Font = Enum.Font.SourceSans
+                btn.TextSize = 12
+                btn.Text = plr.DisplayName
+                btn.TextTruncate = Enum.TextTruncate.AtEnd
+                btn.ZIndex = 12
+                btn.Parent = PlayerListFrame
 
-            btn.MouseButton1Click:Connect(function()
-                if SelectedTarget == plr then
-                    SelectedTarget = nil
-                    TitleBar.Text = " الهدف: أقرب لاعب (تلقائي)"
-                else
-                    SelectedTarget = plr
-                    TitleBar.Text = " الهدف المحدد: " .. plr.Name
-                end
-                RefreshPlayerList()
-            end)
+                btn.MouseButton1Click:Connect(function()
+                    if SelectedTarget == plr then
+                        SelectedTarget = nil
+                        TitleBar.Text = " CLASSIC 84 TROLL | الهدف: أقرب لاعب (تلقائي)"
+                    else
+                        SelectedTarget = plr
+                        TitleBar.Text = " CLASSIC 84 TROLL | الهدف: " .. plr.Name
+                    end
+                    RefreshPlayers()
+                end)
+            end
         end
     end
 end
 
-Players.PlayerAdded:Connect(RefreshPlayerList)
+SearchBox:GetPropertyChangedSignal("Text"):Connect(RefreshPlayers)
+Players.PlayerAdded:Connect(RefreshPlayers)
 Players.PlayerRemoving:Connect(function(plr)
     if SelectedTarget == plr then
         SelectedTarget = nil
-        TitleBar.Text = " خرج الهدف! التبديل للتلقائي"
     end
-    RefreshPlayerList()
+    RefreshPlayers()
 end)
-RefreshPlayerList()
+RefreshPlayers()
 
--- دالة إنشاء زر 40x40 بأيقونة روبلوكس رسمية
-local function CreateTrollButton(name, assetId, isToggle, callback)
-    local btn = Instance.new("ImageButton")
+-- دالة إنشاء زر ميزة (إما لحظي أو Toggle مستمر)
+local orderCounter = 0
+local function AddFeature(name, isToggle, onTrigger)
+    orderCounter = orderCounter + 1
+    Active[name] = false
+
+    local btn = Instance.new("TextButton")
     btn.Name = name
-    btn.Size = UDim2.new(0, 40, 0, 40)
-    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+    btn.LayoutOrder = orderCounter
+    btn.Size = UDim2.new(0, 88, 0, 26)
+    btn.BackgroundColor3 = Color3.fromRGB(44, 44, 52)
     btn.BorderSizePixel = 1
-    btn.BorderColor3 = Color3.fromRGB(100, 100, 110)
-    btn.Image = assetId
-    btn.Parent = ButtonsContainer
+    btn.BorderColor3 = Color3.fromRGB(95, 95, 105)
+    btn.TextColor3 = Color3.fromRGB(245, 245, 250)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 11
+    btn.Text = name
+    btn.TextTruncate = Enum.TextTruncate.AtEnd
+    btn.ZIndex = 12
+    btn.Parent = FeaturesScroll
 
-    -- نص صغير أسفل الأيقونة لتوضيح الوظيفة
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 11)
-    label.Position = UDim2.new(0, 0, 1, -11)
-    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    label.BackgroundTransparency = 0.35
-    label.BorderSizePixel = 0
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 9
-    label.Text = name
-    label.Parent = btn
-
-    local active = false
     btn.MouseButton1Click:Connect(function()
         if isToggle then
-            active = not active
-            btn.BackgroundColor3 = active and Color3.fromRGB(180, 40, 40) or Color3.fromRGB(45, 45, 52)
-            callback(active)
+            Active[name] = not Active[name]
+            btn.BackgroundColor3 = Active[name] and Color3.fromRGB(185, 42, 42) or Color3.fromRGB(44, 44, 52)
+            pcall(onTrigger, Active[name])
         else
-            btn.BackgroundColor3 = Color3.fromRGB(200, 120, 30)
-            task.delay(0.2, function()
-                btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+            btn.BackgroundColor3 = Color3.fromRGB(210, 125, 30)
+            task.delay(0.18, function()
+                if btn and btn.Parent then
+                    btn.BackgroundColor3 = Color3.fromRGB(44, 44, 52)
+                end
             end)
-            callback()
+            pcall(onTrigger)
         end
     end)
-    return btn
+end
+
+-- دوال مساعدة لتأثيرات الفيزياء والانتقال
+local function PulseVelocity(root, vel, duration)
+    if not root then return end
+    root.AssemblyLinearVelocity = vel
+    task.delay(duration or 0.2, function()
+        if root and root.Parent then
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+    end)
+end
+
+local function SpinFlingTarget(tRoot, duration, angularSpeed)
+    local _, myRoot = GetMyParts()
+    if not myRoot or not tRoot then return end
+    local oldCF = myRoot.CFrame
+    local bav = Instance.new("BodyAngularVelocity")
+    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bav.AngularVelocity = Vector3.new(0, angularSpeed or 99999, 0)
+    bav.Parent = myRoot
+
+    local t0 = tick()
+    while tick() - t0 < (duration or 0.75) and tRoot.Parent do
+        myRoot.CFrame = tRoot.CFrame
+        RunService.Heartbeat:Wait()
+    end
+
+    bav:Destroy()
+    myRoot.AssemblyLinearVelocity = Vector3.zero
+    myRoot.AssemblyAngularVelocity = Vector3.zero
+    myRoot.CFrame = oldCF
 end
 
 ---------------------------------------------------------------------
--- الحلقات المستمرة للمميزات (RunService Loops)
+-- قائمة الـ 84 ميزة المتنوعة لاستهداف اللاعبين (Target)
 ---------------------------------------------------------------------
 
--- NoClip (المرور عبر الجدران)
+-- [1 - 15] هجمات القذف والاندفاع والفيزياء
+AddFeature("Bang Launch", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        local old = myRoot.CFrame
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, -1.5, 0)
+        PulseVelocity(myRoot, Vector3.new(0, 190, 0), 0.25)
+        task.wait(0.26)
+        myRoot.CFrame = old
+    end
+end)
+
+AddFeature("Sky Fling", false, function()
+    local _, _, tRoot = GetTargetParts()
+    if tRoot then SpinFlingTarget(tRoot, 0.8, 99999) end
+end)
+
+AddFeature("Side Fling", false, function()
+    local _, _, tRoot = GetTargetParts()
+    if tRoot then SpinFlingTarget(tRoot, 0.65, 75000) end
+end)
+
+AddFeature("Hyper Fling", false, function()
+    local _, _, tRoot = GetTargetParts()
+    if tRoot then SpinFlingTarget(tRoot, 1.1, 150000) end
+end)
+
+AddFeature("Face Bang", false, function()
+    local _, _, _, _, tHead = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tHead and myRoot then
+        for _ = 1, 18 do
+            myRoot.CFrame = tHead.CFrame * CFrame.new(0, 0, -1.1) * CFrame.Angles(0, math.pi, 0)
+            task.wait(0.05)
+        end
+    end
+end)
+
+AddFeature("Head Bump", false, function()
+    local _, _, _, _, tHead = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tHead and myRoot then
+        myRoot.CFrame = tHead.CFrame * CFrame.new(0, 2.2, 0)
+        PulseVelocity(myRoot, Vector3.new(0, 130, 0), 0.2)
+    end
+end)
+
+AddFeature("Uppercut", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, -1, -1.5)
+        PulseVelocity(myRoot, Vector3.new(0, 240, 60), 0.22)
+    end
+end)
+
+AddFeature("Back Slam", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2.5)
+        PulseVelocity(myRoot, -tRoot.CFrame.LookVector * 180 + Vector3.new(0, 90, 0), 0.22)
+    end
+end)
+
+AddFeature("Rocket Push", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -2.2)
+        PulseVelocity(myRoot, tRoot.CFrame.LookVector * 210 + Vector3.new(0, 50, 0), 0.25)
+    end
+end)
+
+AddFeature("Gravity Drop", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 18, 0)
+        PulseVelocity(myRoot, Vector3.new(0, -180, 0), 0.25)
+    end
+end)
+
+AddFeature("Pinball Hit", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        for _ = 1, 5 do
+            myRoot.CFrame = tRoot.CFrame * CFrame.new(math.random(-3, 3), 0, math.random(-3, 3))
+            PulseVelocity(myRoot, Vector3.new(math.random(-120, 120), 110, math.random(-120, 120)), 0.1)
+            task.wait(0.12)
+        end
+    end
+end)
+
+AddFeature("Tornado Spin", true, function() end)
+AddFeature("Orbit Chaos", true, function() end)
+AddFeature("Fast Orbit", true, function() end)
+AddFeature("Vertical Orbit", true, function() end)
+
+-- [16 - 30] الاهتزاز، التشنج، السرعة، وتغيير المظهر الذاتي حول الهدف
+AddFeature("Jerk Shake", true, function() end)
+AddFeature("Micro Jerk", true, function() end)
+AddFeature("Wild Jerk", true, function() end)
+AddFeature("Speed Chaos", true, function(on)
+    local _, _, myHum = GetMyParts()
+    if not on and myHum then myHum.WalkSpeed = 16 end
+end)
+AddFeature("Jump Chaos", true, function(on)
+    local _, _, myHum = GetMyParts()
+    if not on and myHum then myHum.JumpPower = 50 end
+end)
+AddFeature("Head Spin 360", true, function() end)
+AddFeature("Head Wobble", true, function() end)
+AddFeature("Flip Body", true, function() end)
+AddFeature("Twitch Pose", true, function() end)
+AddFeature("Strobe Flash", true, function() end)
+AddFeature("Ghost Blink", true, function() end)
+AddFeature("Tiny Pulse", true, function() end)
+AddFeature("NoClip Mode", true, function() end)
+AddFeature("Hover Target", true, function() end)
+
+-- [31 - 45] أنماط الملاحقة والالتصاق والمضايقة المستمرة
+AddFeature("Follow Back", true, function() end)
+AddFeature("Follow Front", true, function() end)
+AddFeature("Follow Left", true, function() end)
+AddFeature("Follow Right", true, function() end)
+AddFeature("Follow Above", true, function() end)
+AddFeature("Follow Under", true, function() end)
+AddFeature("Shadow Stalk", true, function() end)
+AddFeature("Mirror Move", true, function() end)
+AddFeature("Peekaboo", true, function() end)
+AddFeature("Circle Strafe", true, function() end)
+AddFeature("Bounce Stalk", true, function() end)
+AddFeature("ZigZag Stalk", true, function() end)
+AddFeature("Face Stare", true, function() end)
+AddFeature("Tail Wag", true, function() end)
+AddFeature("Dance Stalk", true, function() end)
+
+-- [46 - 60] انتقالات سريعة وهجمات مباغتة فورية
+AddFeature("TP Behind", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3) end
+end)
+
+AddFeature("TP Front", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, math.pi, 0) end
+end)
+
+AddFeature("TP Sky Above", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 25, 0) end
+end)
+
+AddFeature("TP Under Floor", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(0, -6, 0) end
+end)
+
+AddFeature("TP Left Side", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(-3.5, 0, 0) end
+end)
+
+AddFeature("TP Right Side", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame * CFrame.new(3.5, 0, 0) end
+end)
+
+AddFeature("TP & Jump", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot, myHum = GetMyParts()
+    if tRoot and myRoot and myHum then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2.5)
+        myHum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+AddFeature("TP & Sit", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot, myHum = GetMyParts()
+    if tRoot and myRoot and myHum then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2)
+        myHum.Sit = true
+    end
+end)
+
+AddFeature("Stand Up", false, function()
+    local _, _, myHum = GetMyParts()
+    if myHum then myHum.Sit = false end
+end)
+
+AddFeature("Spam Jump", true, function() end)
+AddFeature("Spam Sit", true, function() end)
+AddFeature("Random TP", true, function() end)
+AddFeature("Triple Hit", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        for i = 1, 3 do
+            myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.8)
+            PulseVelocity(myRoot, Vector3.new(0, 95 * i, 0), 0.12)
+            task.wait(0.16)
+        end
+    end
+end)
+
+AddFeature("Warp Burst", false, function()
+    local _, _, tRoot = GetTargetParts()
+    local _, myRoot = GetMyParts()
+    if tRoot and myRoot then
+        for _ = 1, 6 do
+            myRoot.CFrame = tRoot.CFrame * CFrame.new(math.random(-5, 5), math.random(0, 4), math.random(-5, 5))
+            task.wait(0.06)
+        end
+    end
+end)
+
+AddFeature("Return Safe", false, function()
+    local _, myRoot = GetMyParts()
+    if myRoot then
+        myRoot.AssemblyLinearVelocity = Vector3.zero
+        myRoot.AssemblyAngularVelocity = Vector3.zero
+        myRoot.CFrame = CFrame.new(0, 25, 0)
+    end
+end)
+
+-- [61 - 74] تأثيرات الشات والرسائل الموجهة للهدف
+AddFeature("Chat Spam", true, function() end)
+AddFeature("Roast Spam", true, function() end)
+AddFeature("Alert Spam", true, function() end)
+AddFeature("Glitch Spam", true, function() end)
+AddFeature("Count Spam", true, function() end)
+AddFeature("Say Target", false, function()
+    local plr = GetTargetPlayer()
+    if plr then
+        local msg = "Target locked on: " .. plr.DisplayName
+        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+            local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+            if ch then ch:SendAsync(msg) end
+        else
+            local ev = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+            if ev and ev:FindFirstChild("SayMessageRequest") then
+                ev.SayMessageRequest:FireServer(msg, "All")
+            end
+        end
+    end
+end)
+
+AddFeature("Say WatchOut", false, function()
+    local plr = GetTargetPlayer()
+    local msg = plr and ("Watch out " .. plr.DisplayName .. "!") or "Watch out!"
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if ch then ch:SendAsync(msg) end
+    end
+end)
+
+AddFeature("Say Caught", false, function()
+    local plr = GetTargetPlayer()
+    local msg = plr and ("Caught " .. plr.DisplayName .. "!") or "Caught!"
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if ch then ch:SendAsync(msg) end
+    end
+end)
+
+AddFeature("Say Orbit", false, function()
+    local plr = GetTargetPlayer()
+    local msg = plr and ("Orbiting " .. plr.DisplayName) or "Orbiting target"
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if ch then ch:SendAsync(msg) end
+    end
+end)
+
+AddFeature("Say Chaos", false, function()
+    local msg = "Chaos mode active!"
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if ch then ch:SendAsync(msg) end
+    end
+end)
+
+AddFeature("Fast Chat", true, function() end)
+AddFeature("Slow Chat", true, function() end)
+AddFeature("Caps Chat", true, function() end)
+AddFeature("Emoji Chat", true, function() end)
+
+-- [75 - 84] ميزات الكاميرا، المراقبة، والتحكم السريع بالهدف
+AddFeature("Spectate", true, function(on)
+    local cam = workspace.CurrentCamera
+    if on then
+        local _, tChar = GetTargetParts()
+        local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+        if tHum and cam then cam.CameraSubject = tHum end
+    else
+        local _, _, myHum = GetMyParts()
+        if myHum and cam then cam.CameraSubject = myHum end
+    end
+end)
+
+AddFeature("Cam Shake", true, function(on)
+    local cam = workspace.CurrentCamera
+    if not on and cam then
+        local _, _, myHum = GetMyParts()
+        if myHum then cam.CameraSubject = myHum end
+    end
+end)
+
+AddFeature("Cam Tilt", true, function() end)
+AddFeature("Cam Zoom", true, function(on)
+    if on then
+        LocalPlayer.CameraMaxZoomDistance = 12
+        LocalPlayer.CameraMinZoomDistance = 0.5
+    else
+        LocalPlayer.CameraMaxZoomDistance = 128
+        LocalPlayer.CameraMinZoomDistance = 0.5
+    end
+end)
+
+AddFeature("Lock Nearest", false, function()
+    SelectedTarget = nil
+    GetTargetPlayer()
+    RefreshPlayers()
+end)
+
+AddFeature("Random Target", false, function()
+    local pool = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(pool, plr)
+        end
+    end
+    if #pool > 0 then
+        SelectedTarget = pool[math.random(1, #pool)]
+        TitleBar.Text = " CLASSIC 84 TROLL | هدف عشوائي: " .. SelectedTarget.Name
+        RefreshPlayers()
+    end
+end)
+
+AddFeature("Clear Target", false, function()
+    SelectedTarget = nil
+    TitleBar.Text = " CLASSIC 84 TROLL | الهدف: أقرب لاعب (تلقائي)"
+    RefreshPlayers()
+end)
+
+AddFeature("Auto Frenzy", true, function() end)
+AddFeature("Reset Body", false, function()
+    local char, root, hum = GetMyParts()
+    if char then
+        if hum then
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+            hum.Sit = false
+        end
+        if root then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.LocalTransparencyModifier = 0
+                p.CanCollide = true
+            end
+        end
+    end
+end)
+
+AddFeature("Stop All", false, function()
+    for k in pairs(Active) do
+        Active[k] = false
+    end
+    for _, child in ipairs(FeaturesScroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundColor3 = Color3.fromRGB(44, 44, 52)
+        end
+    end
+    local cam = workspace.CurrentCamera
+    local char, root, hum = GetMyParts()
+    if hum and cam then
+        cam.CameraSubject = hum
+        hum.WalkSpeed = 16
+        hum.JumpPower = 50
+        hum.Sit = false
+    end
+    if root then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    if char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.LocalTransparencyModifier = 0
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------------------
+-- محرك التنفيذ المستمر (Stepped & Heartbeat & Chat Loops)
+---------------------------------------------------------------------
+
 RunService.Stepped:Connect(function()
-    if States.NoClip and LocalPlayer.Character then
-        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    if Active["NoClip Mode"] or Active["Hover Target"] or Active["Orbit Chaos"] or Active["Fast Orbit"] then
+        for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
             end
         end
     end
+
+    if Active["Spectate"] then
+        local _, tChar = GetTargetParts()
+        local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+        if tHum and workspace.CurrentCamera then
+            workspace.CurrentCamera.CameraSubject = tHum
+        end
+    end
 end)
 
--- Speed Chaos + Head Spin + Jerk + Orbit
-local orbitAngle = 0
+local angleA = 0
+local angleB = 0
 RunService.Heartbeat:Connect(function(dt)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local char, root, hum = GetMyParts()
+    if not char or not root then return end
 
-    -- 1. Speed Chaos: تغيير عشوائي مستمر للسرعة
-    if States.SpeedChaos and hum then
-        hum.WalkSpeed = math.random(6, 130)
+    local _, _, tRoot = GetTargetParts()
+
+    -- سرعة وقفز عشوائي
+    if Active["Speed Chaos"] and hum then
+        hum.WalkSpeed = math.random(8, 125)
+    end
+    if Active["Jump Chaos"] and hum then
+        hum.JumpPower = math.random(25, 140)
     end
 
-    -- 2. Head Spin: تدوير الرأس 360 درجة باستمرار
-    if States.HeadSpin and char then
+    -- دوران الرأس والجسم
+    if Active["Head Spin 360"] or Active["Head Wobble"] then
         local neck = char:FindFirstChild("Neck", true)
         if neck and neck:IsA("Motor6D") then
-            neck.C0 = neck.C0 * CFrame.Angles(0, math.rad(25), 0)
+            if Active["Head Spin 360"] then
+                neck.C0 = neck.C0 * CFrame.Angles(0, math.rad(28), 0)
+            else
+                neck.C0 = neck.C0 * CFrame.Angles(math.sin(tick() * 25) * 0.15, math.cos(tick() * 25) * 0.15, 0)
+            end
         end
     end
 
-    -- 3. Jerk: اهتزاز عنيف ومتقطع للموقع حول الهدف أو في المكان
-    if States.Jerk and root then
-        local target = GetTarget()
-        local baseCFrame = (target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")) 
-            and target.Character.HumanoidRootPart.CFrame 
-            or root.CFrame
-        local offset = Vector3.new(math.random(-3, 3), math.random(-1, 2), math.random(-3, 3))
-        root.CFrame = baseCFrame * CFrame.new(offset)
+    if Active["Flip Body"] then
+        root.CFrame = root.CFrame * CFrame.Angles(math.rad(14), 0, 0)
     end
 
-    -- 4. Orbit: الدوران السريع حول الهدف لإرباكه
-    if States.Orbit and root then
-        local target = GetTarget()
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            orbitAngle = orbitAngle + (dt * 12)
-            local tRoot = target.Character.HumanoidRootPart
-            local pos = tRoot.Position + Vector3.new(math.cos(orbitAngle) * 4, 0, math.sin(orbitAngle) * 4)
-            root.CFrame = CFrame.new(pos, tRoot.Position)
+    if Active["Twitch Pose"] then
+        root.CFrame = root.CFrame * CFrame.Angles(math.random(-2, 2) * 0.1, math.random(-2, 2) * 0.1, math.random(-2, 2) * 0.1)
+    end
+
+    -- اهتزازات Jerk
+    if Active["Jerk Shake"] or Active["Micro Jerk"] or Active["Wild Jerk"] then
+        local base = tRoot and tRoot.CFrame or root.CFrame
+        local spread = Active["Wild Jerk"] and 4.5 or (Active["Micro Jerk"] and 0.7 or 2.2)
+        root.CFrame = base * CFrame.new(math.random(-spread, spread), math.random(0, spread * 0.5), math.random(-spread, spread))
+    end
+
+    -- دوران حول الهدف
+    if tRoot and (Active["Orbit Chaos"] or Active["Fast Orbit"] or Active["Vertical Orbit"] or Active["Tornado Spin"]) then
+        local spd = Active["Fast Orbit"] and 18 or 10
+        angleA = angleA + dt * spd
+        angleB = angleB + dt * (spd * 1.4)
+        local pos
+        if Active["Vertical Orbit"] then
+            pos = tRoot.Position + Vector3.new(math.cos(angleA) * 4, math.sin(angleB) * 5, 0)
+        elseif Active["Tornado Spin"] then
+            local h = ((tick() * 8) % 10) - 2
+            pos = tRoot.Position + Vector3.new(math.cos(angleB) * 5, h, math.sin(angleB) * 5)
+        else
+            pos = tRoot.Position + Vector3.new(math.cos(angleA) * 4.5, 0, math.sin(angleA) * 4.5)
+        end
+        root.CFrame = CFrame.new(pos, tRoot.Position)
+    end
+
+    -- أنماط الملاحقة والالتصاق بالهدف
+    if tRoot then
+        if Active["Follow Back"] then root.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3) end
+        if Active["Follow Front"] then root.CFrame = tRoot.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, math.pi, 0) end
+        if Active["Follow Left"] then root.CFrame = tRoot.CFrame * CFrame.new(-3.2, 0, 0) end
+        if Active["Follow Right"] then root.CFrame = tRoot.CFrame * CFrame.new(3.2, 0, 0) end
+        if Active["Follow Above"] or Active["Hover Target"] then root.CFrame = tRoot.CFrame * CFrame.new(0, 4.5, 0) end
+        if Active["Follow Under"] then root.CFrame = tRoot.CFrame * CFrame.new(0, -3.5, 0) end
+        if Active["Shadow Stalk"] then root.CFrame = tRoot.CFrame * CFrame.new(0, 0, 5) end
+        if Active["Mirror Move"] then root.CFrame = CFrame.new(-tRoot.Position.X, tRoot.Position.Y, -tRoot.Position.Z) end
+        if Active["Peekaboo"] then
+            local zOff = (math.floor(tick() * 2) % 2 == 0) and -2.5 or 6
+            root.CFrame = tRoot.CFrame * CFrame.new(0, 0, zOff)
+        end
+        if Active["Circle Strafe"] then
+            angleA = angleA + dt * 7
+            root.CFrame = tRoot.CFrame * CFrame.new(math.cos(angleA) * 6, 0, math.sin(angleA) * 6)
+        end
+        if Active["Bounce Stalk"] then
+            root.CFrame = tRoot.CFrame * CFrame.new(0, math.abs(math.sin(tick() * 8)) * 4, 2.5)
+        end
+        if Active["ZigZag Stalk"] then
+            root.CFrame = tRoot.CFrame * CFrame.new(math.sin(tick() * 10) * 4, 0, 2.5)
+        end
+        if Active["Face Stare"] then
+            root.CFrame = CFrame.new(tRoot.Position + tRoot.CFrame.LookVector * 2.5, tRoot.Position)
+        end
+        if Active["Tail Wag"] then
+            root.CFrame = tRoot.CFrame * CFrame.new(math.sin(tick() * 14) * 2.2, 0, 2.6)
+        end
+        if Active["Dance Stalk"] then
+            root.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2.5) * CFrame.Angles(0, math.sin(tick() * 12) * 0.8, 0)
+        end
+        if Active["Random TP"] and math.random() < 0.08 then
+            root.CFrame = tRoot.CFrame * CFrame.new(math.random(-6, 6), math.random(0, 4), math.random(-6, 6))
+        end
+        if Active["Auto Frenzy"] and math.random() < 0.05 then
+            PulseVelocity(root, Vector3.new(math.random(-90, 90), 110, math.random(-90, 90)), 0.12)
+        end
+    end
+
+    -- وميض وإخفاء جزئي
+    if Active["Strobe Flash"] or Active["Ghost Blink"] then
+        local val = Active["Strobe Flash"] and (math.random() > 0.5 and 0 or 0.85) or (0.35 + 0.35 * math.sin(tick() * 10))
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.LocalTransparencyModifier = val
+            end
+        end
+    end
+
+    -- قفز وجلوس متكرر
+    if hum then
+        if Active["Spam Jump"] and math.random() < 0.12 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+        if Active["Spam Sit"] and math.random() < 0.08 then
+            hum.Sit = not hum.Sit
+        end
+    end
+
+    -- إمالة واهتزاز الكاميرا
+    local cam = workspace.CurrentCamera
+    if cam then
+        if Active["Cam Shake"] then
+            cam.CFrame = cam.CFrame * CFrame.new(math.random(-2, 2) * 0.1, math.random(-2, 2) * 0.1, 0)
+        end
+        if Active["Cam Tilt"] then
+            cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, math.rad(math.sin(tick() * 4) * 18))
         end
     end
 end)
 
--- Chat Spam Loop (إرسال رسائل متكررة في الشات العام)
+-- حلقة رسائل الشات المرتبطة بالهدف
+local countNum = 0
 task.spawn(function()
-    local messages = {
-        "TROLLED!",
-        "Catch me if you can!",
-        "Chaos Mode Activated!",
-        "Too slow!",
-        "System Glitch!"
-    }
-    while task.wait(1.5) do
-        if States.ChatSpam then
-            local target = GetTarget()
-            local prefix = target and ("[" .. target.DisplayName .. "] ") or ""
-            local msg = prefix .. messages[math.random(1, #messages)]
-            
-            -- دعم نظام الشات الحديث والقديم في روبلوكس
+    local roasts = {"Too slow!", "Target locked!", "Catch me!", "No escape!"}
+    local alerts = {"Alert: Target tracked!", "Warning: Chaos active!", "System ping!"}
+    local glitches = {"#ERR_404#", "0xGLITCH", "!!OVERRIDE!!"}
+    local emojis = {">:)", "?!?", "<<<>>>", "***"}
+
+    while true do
+        local delayTime = Active["Fast Chat"] and 0.8 or (Active["Slow Chat"] and 3.5 or 1.8)
+        task.wait(delayTime)
+
+        local plr = GetTargetPlayer()
+        local tName = plr and plr.DisplayName or "Target"
+        local msg = nil
+
+        if Active["Chat Spam"] then
+            msg = "[" .. tName .. "] Chaos mode!"
+        elseif Active["Roast Spam"] then
+            msg = tName .. " - " .. roasts[math.random(1, #roasts)]
+        elseif Active["Alert Spam"] then
+            msg = alerts[math.random(1, #alerts)] .. " (" .. tName .. ")"
+        elseif Active["Glitch Spam"] then
+            msg = glitches[math.random(1, #glitches)] .. " " .. tName
+        elseif Active["Count Spam"] then
+            countNum = countNum + 1
+            msg = tName .. " #" .. tostring(countNum)
+        elseif Active["Emoji Chat"] then
+            msg = tName .. " " .. emojis[math.random(1, #emojis)]
+        end
+
+        if msg then
+            if Active["Caps Chat"] then
+                msg = string.upper(msg)
+            end
             if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-                local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-                if channel then channel:SendAsync(msg) end
+                local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+                if ch then ch:SendAsync(msg) end
             else
-                local sayEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-                if sayEvent and sayEvent:FindFirstChild("SayMessageRequest") then
-                    sayEvent.SayMessageRequest:FireServer(msg, "All")
+                local ev = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+                if ev and ev:FindFirstChild("SayMessageRequest") then
+                    ev.SayMessageRequest:FireServer(msg, "All")
                 end
             end
         end
-    end
-end)
-
----------------------------------------------------------------------
--- تعريف الأزرار (40x40) مع أيقونات روبلوكس الرسمية
----------------------------------------------------------------------
-
--- 1. Bang (قذيفة صعود مفاجئة عند الهدف)
-CreateTrollButton("Bang", "rbxassetid://133293265", false, function()
-    local target = GetTarget()
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if target and target.Character and root then
-        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-        if tRoot then
-            local oldPos = root.CFrame
-            root.CFrame = tRoot.CFrame * CFrame.new(0, -1.5, 0)
-            root.AssemblyLinearVelocity = Vector3.new(0, 180, 0)
-            task.wait(0.25)
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.CFrame = oldPos
-        end
-    end
-end)
-
--- 2. Fling (رمي الهدف بقوة دوران عالية)
-CreateTrollButton("Fling", "rbxassetid://4370318685", false, function()
-    local target = GetTarget()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if target and target.Character and root then
-        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-        if tRoot then
-            local oldPos = root.CFrame
-            local bav = Instance.new("BodyAngularVelocity")
-            bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bav.AngularVelocity = Vector3.new(0, 99999, 0)
-            bav.Parent = root
-
-            local startTime = tick()
-            while tick() - startTime < 0.8 and tRoot.Parent do
-                root.CFrame = tRoot.CFrame
-                RunService.Heartbeat:Wait()
-            end
-
-            bav:Destroy()
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            root.CFrame = oldPos
-        end
-    end
-end)
-
--- 3. FaceBang (الالتصاق برأس الهدف وتشويه الرؤية)
-CreateTrollButton("FaceBang", "rbxassetid://7072716017", false, function()
-    local target = GetTarget()
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if target and target.Character and root then
-        local tHead = target.Character:FindFirstChild("Head")
-        if tHead then
-            for i = 1, 20 do
-                root.CFrame = tHead.CFrame * CFrame.new(0, 0, -1.2) * CFrame.Angles(0, math.pi, 0)
-                task.wait(0.05)
-            end
-        end
-    end
-end)
-
--- 4. Jerk (اهتزاز وتشنج متقطع)
-CreateTrollButton("Jerk", "rbxassetid://7072721559", true, function(state)
-    States.Jerk = state
-end)
-
--- 5. SpeedChaos (سرعة عشوائية جنونية)
-CreateTrollButton("Speed", "rbxassetid://7072722963", true, function(state)
-    States.SpeedChaos = state
-    if not state and LocalPlayer.Character then
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = 16 end
-    end
-end)
-
--- 6. NoClip (اختراق الجدران)
-CreateTrollButton("NoClip", "rbxassetid://7072718266", true, function(state)
-    States.NoClip = state
-end)
-
--- 7. ChatSpam (إرسال رسائل متكررة)
-CreateTrollButton("Spam", "rbxassetid://7072706620", true, function(state)
-    States.ChatSpam = state
-end)
-
--- 8. HeadSpin (تدوير الرأس 360 درجة)
-CreateTrollButton("HeadSpin", "rbxassetid://7072721682", true, function(state)
-    States.HeadSpin = state
-end)
-
--- 9. Orbit (ميزة إضافية: الدوران السريع حول الهدف)
-CreateTrollButton("Orbit", "rbxassetid://7072719338", true, function(state)
-    States.Orbit = state
-end)
-
--- 10. Bring TP (ميزة إضافية: الانتقال الفوري لظهر الهدف)
-CreateTrollButton("TP Behind", "rbxassetid://7072724538", false, function()
-    local target = GetTarget()
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if target and target.Character and root then
-        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-        if tRoot then
-            root.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2.5)
-        end
-    end
-end)
-
--- 11. Stop All (إيقاف جميع التأثيرات فوراً)
-CreateTrollButton("StopAll", "rbxassetid://7072725342", false, function()
-    for k in pairs(States) do
-        States[k] = false
-    end
-    for _, btn in ipairs(ButtonsContainer:GetChildren()) do
-        if btn:IsA("ImageButton") then
-            btn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
-        end
-    end
-    if LocalPlayer.Character then
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = 16 end
     end
 end)
