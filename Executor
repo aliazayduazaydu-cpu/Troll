@@ -1,0 +1,694 @@
+-- Improved Square Executor UI with Safe Viewport Clamping & Responsive Layout
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local LogService = game:GetService("LogService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local function getUiParent()
+	local ok, hui = pcall(function()
+		return gethui and gethui()
+	end)
+	if ok and hui then
+		return hui
+	end
+	return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function safeMakeFolder(name)
+	if typeof(makefolder) == "function" then
+		pcall(makefolder, name)
+	end
+end
+
+local function safeWriteFile(path, content)
+	if typeof(writefile) == "function" then
+		pcall(writefile, path, content)
+	end
+end
+
+local function safeClipboard(text)
+	if typeof(setclipboard) == "function" then
+		pcall(setclipboard, tostring(text))
+	end
+end
+
+local function runLoadstring(codeText, sourceName)
+	if type(codeText) ~= "string" or codeText:match("^%s*$") then
+		warn("[Executor] Empty script.")
+		return false
+	end
+
+	local loaderFn = loadstring
+	if type(loaderFn) ~= "function" then
+		warn("[Executor] loadstring is not available in this environment.")
+		return false
+	end
+
+	local compiled, compileErr = loaderFn(codeText, "@" .. (sourceName or "ExecutorScript"))
+	if not compiled then
+		warn("[Executor] Compile error: " .. tostring(compileErr))
+		return false
+	end
+
+	local success, runtimeErr = pcall(compiled)
+	if not success then
+		warn("[Executor] Runtime error: " .. tostring(runtimeErr))
+		return false
+	end
+
+	return true
+end
+
+-- ألوان هادئة ومحايدة بدون RGB ساطع
+local THEME = {
+	BgMain = Color3.fromRGB(18, 19, 22),
+	BgPanel = Color3.fromRGB(26, 28, 32),
+	BgInput = Color3.fromRGB(34, 37, 42),
+	BgHover = Color3.fromRGB(45, 49, 56),
+	Border = Color3.fromRGB(62, 67, 76),
+	TextPrimary = Color3.fromRGB(230, 233, 238),
+	TextMuted = Color3.fromRGB(150, 157, 168),
+}
+
+-- أيقونات روبلوكس فقط
+local ROBLOX_ICONS = {
+	Search = "rbxassetid://13365156882",
+	Close = "rbxassetid://13363121645",
+	Executor = "rbxassetid://13462269327",
+	Console = "rbxassetid://13569242972",
+	Toggle = "rbxassetid://13711943220",
+	DefaultThumb = "rbxassetid://13365407660",
+}
+
+safeMakeFolder("SquareExecutorScripts")
+
+local parentGui = getUiParent()
+if parentGui:FindFirstChild("ImprovedSquareExecutor") then
+	parentGui:FindFirstChild("ImprovedSquareExecutor"):Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ImprovedSquareExecutor"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 50
+ScreenGui.Parent = parentGui
+
+-- دالة حصر أي عنصر داخل حدود الشاشة الآمنة لمنع اختفائه في الزوايا أو خارج الشاشة
+local SAFE_MARGIN = 12
+
+local function clampPositionToViewport(frameObj, targetX, targetY)
+	local camera = workspace.CurrentCamera
+	local vpSize = (camera and camera.ViewportSize) or Vector2.new(1280, 720)
+	local size = frameObj.AbsoluteSize
+
+	local minX = SAFE_MARGIN
+	local minY = SAFE_MARGIN
+	local maxX = math.max(minX, vpSize.X - size.X - SAFE_MARGIN)
+	local maxY = math.max(minY, vpSize.Y - size.Y - SAFE_MARGIN)
+
+	local clampedX = math.clamp(targetX, minX, maxX)
+	local clampedY = math.clamp(targetY, minY, maxY)
+
+	frameObj.Position = UDim2.fromOffset(clampedX, clampedY)
+end
+
+-- تفعيل السحب الآمن لأي إطار أو زر دون السماح له بالخروج أو الانحشار في الزوايا
+local function enableSafeDrag(dragHandle, targetFrame, onTapCallback)
+	local dragging = false
+	local movedDistance = 0
+	local dragStartInputPos = Vector2.zero
+	local dragStartFramePos = Vector2.zero
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			movedDistance = 0
+			dragStartInputPos = input.Position
+			dragStartFramePos = Vector2.new(targetFrame.AbsolutePosition.X, targetFrame.AbsolutePosition.Y)
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					clampPositionToViewport(targetFrame, targetFrame.AbsolutePosition.X, targetFrame.AbsolutePosition.Y)
+					if movedDistance < 8 and type(onTapCallback) == "function" then
+						onTapCallback()
+					end
+				end
+			end)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStartInputPos
+			movedDistance = math.max(movedDistance, delta.Magnitude)
+			local nextX = dragStartFramePos.X + delta.X
+			local nextY = dragStartFramePos.Y + delta.Y
+			clampPositionToViewport(targetFrame, nextX, nextY)
+		end
+	end)
+end
+
+-- زر فتح وإغلاق القائمة (مربع وواضح وآمن من الاختفاء)
+local ToggleButton = Instance.new("ImageButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.fromOffset(48, 48)
+ToggleButton.Position = UDim2.fromOffset(20, 120)
+ToggleButton.BackgroundColor3 = THEME.BgPanel
+ToggleButton.BorderSizePixel = 1
+ToggleButton.BorderColor3 = THEME.Border
+ToggleButton.Image = ROBLOX_ICONS.Toggle
+ToggleButton.ImageColor3 = THEME.TextPrimary
+ToggleButton.ScaleType = Enum.ScaleType.Fit
+ToggleButton.ZIndex = 100
+ToggleButton.Parent = ScreenGui
+
+local TogglePad = Instance.new("UIPadding")
+TogglePad.PaddingTop = UDim.new(0, 10)
+TogglePad.PaddingBottom = UDim.new(0, 10)
+TogglePad.PaddingLeft = UDim.new(0, 10)
+TogglePad.PaddingRight = UDim.new(0, 10)
+TogglePad.Parent = ToggleButton
+
+-- النافذة الرئيسية المربعة بالكامل
+local MainWindow = Instance.new("Frame")
+MainWindow.Name = "MainWindow"
+MainWindow.Size = UDim2.fromOffset(660, 390)
+MainWindow.Position = UDim2.fromOffset(100, 80)
+MainWindow.BackgroundColor3 = THEME.BgMain
+MainWindow.BorderSizePixel = 1
+MainWindow.BorderColor3 = THEME.Border
+MainWindow.Visible = true
+MainWindow.ZIndex = 20
+MainWindow.Parent = ScreenGui
+
+-- ضبط الحجم والموضع تلقائياً عند تغيير حجم الشاشة أو دورانها
+local function updateResponsiveLayout()
+	local camera = workspace.CurrentCamera
+	local vp = (camera and camera.ViewportSize) or Vector2.new(1280, 720)
+
+	local winW = math.clamp(vp.X - (SAFE_MARGIN * 2) - 64, 320, 720)
+	local winH = math.clamp(vp.Y - (SAFE_MARGIN * 2), 240, 440)
+	MainWindow.Size = UDim2.fromOffset(winW, winH)
+
+	if MainWindow.AbsolutePosition.X == 0 and MainWindow.AbsolutePosition.Y == 0 then
+		local centerX = (vp.X - winW) * 0.5
+		local centerY = (vp.Y - winH) * 0.5
+		clampPositionToViewport(MainWindow, centerX, centerY)
+	else
+		clampPositionToViewport(MainWindow, MainWindow.AbsolutePosition.X, MainWindow.AbsolutePosition.Y)
+	end
+
+	clampPositionToViewport(ToggleButton, ToggleButton.AbsolutePosition.X, ToggleButton.AbsolutePosition.Y)
+end
+
+task.defer(function()
+	local camera = workspace.CurrentCamera
+	local vp = (camera and camera.ViewportSize) or Vector2.new(1280, 720)
+	local winW = math.clamp(vp.X - (SAFE_MARGIN * 2) - 64, 320, 720)
+	local winH = math.clamp(vp.Y - (SAFE_MARGIN * 2), 240, 440)
+	MainWindow.Size = UDim2.fromOffset(winW, winH)
+	clampPositionToViewport(MainWindow, (vp.X - winW) * 0.5, (vp.Y - winH) * 0.5)
+	clampPositionToViewport(ToggleButton, 20, math.max(SAFE_MARGIN + 60, (vp.Y - 48) * 0.5))
+end)
+
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsiveLayout)
+end
+
+-- الشريط العلوي المربع
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 38)
+TopBar.BackgroundColor3 = THEME.BgPanel
+TopBar.BorderSizePixel = 1
+TopBar.BorderColor3 = THEME.Border
+TopBar.Parent = MainWindow
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -86, 1, 0)
+TitleLabel.Position = UDim2.new(0, 12, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "SQUARE EXECUTOR // SAFE VIEWPORT"
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.TextColor3 = THEME.TextPrimary
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 12
+TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+TitleLabel.Parent = TopBar
+
+local CloseBtn = Instance.new("ImageButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.fromOffset(26, 26)
+CloseBtn.Position = UDim2.new(1, -32, 0, 6)
+CloseBtn.BackgroundColor3 = THEME.BgInput
+CloseBtn.BorderSizePixel = 1
+CloseBtn.BorderColor3 = THEME.Border
+CloseBtn.Image = ROBLOX_ICONS.Close
+CloseBtn.ImageColor3 = THEME.TextPrimary
+CloseBtn.ScaleType = Enum.ScaleType.Fit
+CloseBtn.Parent = TopBar
+
+-- القائمة الجانبية المربعة
+local SideNav = Instance.new("Frame")
+SideNav.Name = "SideNav"
+SideNav.Size = UDim2.new(0, 145, 1, -38)
+SideNav.Position = UDim2.new(0, 0, 0, 38)
+SideNav.BackgroundColor3 = THEME.BgPanel
+SideNav.BorderSizePixel = 1
+SideNav.BorderColor3 = THEME.Border
+SideNav.Parent = MainWindow
+
+local NavList = Instance.new("UIListLayout")
+NavList.Padding = UDim.new(0, 6)
+NavList.SortOrder = Enum.SortOrder.LayoutOrder
+NavList.Parent = SideNav
+
+local NavPad = Instance.new("UIPadding")
+NavPad.PaddingTop = UDim.new(0, 8)
+NavPad.PaddingLeft = UDim.new(0, 8)
+NavPad.PaddingRight = UDim.new(0, 8)
+NavPad.Parent = SideNav
+
+-- منطقة المحتوى
+local ContentArea = Instance.new("Frame")
+ContentArea.Name = "ContentArea"
+ContentArea.Size = UDim2.new(1, -145, 1, -38)
+ContentArea.Position = UDim2.new(0, 145, 0, 38)
+ContentArea.BackgroundColor3 = THEME.BgMain
+ContentArea.BorderSizePixel = 0
+ContentArea.Parent = MainWindow
+
+local function createPage(name)
+	local page = Instance.new("Frame")
+	page.Name = name
+	page.Size = UDim2.new(1, 0, 1, 0)
+	page.BackgroundTransparency = 1
+	page.BorderSizePixel = 0
+	page.Visible = false
+	page.Parent = ContentArea
+	return page
+end
+
+local ExecutorPage = createPage("ExecutorPage")
+local SearchPage = createPage("SearchPage")
+local ConsolePage = createPage("ConsolePage")
+ExecutorPage.Visible = true
+
+local Pages = {
+	Executor = ExecutorPage,
+	Search = SearchPage,
+	Console = ConsolePage,
+}
+
+local function createNavButton(labelText, iconAsset, targetKey, order)
+	local btn = Instance.new("TextButton")
+	btn.Name = targetKey .. "Nav"
+	btn.LayoutOrder = order
+	btn.Size = UDim2.new(1, 0, 0, 34)
+	btn.BackgroundColor3 = THEME.BgInput
+	btn.BorderSizePixel = 1
+	btn.BorderColor3 = THEME.Border
+	btn.Text = "      " .. labelText
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.TextColor3 = THEME.TextPrimary
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 12
+	btn.Parent = SideNav
+
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.fromOffset(16, 16)
+	icon.Position = UDim2.new(0, 8, 0.5, -8)
+	icon.BackgroundTransparency = 1
+	icon.Image = iconAsset
+	icon.ImageColor3 = THEME.TextMuted
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = btn
+
+	btn.MouseButton1Click:Connect(function()
+		for k, pg in pairs(Pages) do
+			pg.Visible = (k == targetKey)
+		end
+		for _, child in ipairs(SideNav:GetChildren()) do
+			if child:IsA("TextButton") then
+				child.BackgroundColor3 = (child == btn) and THEME.BgHover or THEME.BgInput
+			end
+		end
+	end)
+
+	return btn
+end
+
+local execNav = createNavButton("Executor", ROBLOX_ICONS.Executor, "Executor", 1)
+execNav.BackgroundColor3 = THEME.BgHover
+createNavButton("Search Hub", ROBLOX_ICONS.Search, "Search", 2)
+createNavButton("Console", ROBLOX_ICONS.Console, "Console", 3)
+
+-------------------------------------------------------------------------
+-- 1) تبويب المُنفِّذ (Loadstring Editor)
+-------------------------------------------------------------------------
+local EditorFrame = Instance.new("Frame")
+EditorFrame.Size = UDim2.new(1, -16, 1, -58)
+EditorFrame.Position = UDim2.new(0, 8, 0, 8)
+EditorFrame.BackgroundColor3 = THEME.BgInput
+EditorFrame.BorderSizePixel = 1
+EditorFrame.BorderColor3 = THEME.Border
+EditorFrame.Parent = ExecutorPage
+
+local CodeBox = Instance.new("TextBox")
+CodeBox.Name = "CodeBox"
+CodeBox.Size = UDim2.new(1, -12, 1, -12)
+CodeBox.Position = UDim2.new(0, 6, 0, 6)
+CodeBox.BackgroundTransparency = 1
+CodeBox.MultiLine = true
+CodeBox.ClearTextOnFocus = false
+CodeBox.TextWrapped = false
+CodeBox.TextXAlignment = Enum.TextXAlignment.Left
+CodeBox.TextYAlignment = Enum.TextYAlignment.Top
+CodeBox.Text = '-- ضع سكربت Luau أو loadstring هنا\n-- مثال:\n-- loadstring(game:HttpGet("https://raw.githubusercontent.com/..."))()'
+CodeBox.PlaceholderText = "-- اكتب الكود هنا..."
+CodeBox.PlaceholderColor3 = THEME.TextMuted
+CodeBox.TextColor3 = THEME.TextPrimary
+CodeBox.Font = Enum.Font.Code
+CodeBox.TextSize = 13
+CodeBox.Parent = EditorFrame
+
+local ActionRow = Instance.new("Frame")
+ActionRow.Size = UDim2.new(1, -16, 0, 34)
+ActionRow.Position = UDim2.new(0, 8, 1, -42)
+ActionRow.BackgroundTransparency = 1
+ActionRow.Parent = ExecutorPage
+
+local function createActionBtn(text, posX, widthScale, callback)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(widthScale, -4, 1, 0)
+	b.Position = UDim2.new(posX, 0, 0, 0)
+	b.BackgroundColor3 = THEME.BgPanel
+	b.BorderSizePixel = 1
+	b.BorderColor3 = THEME.Border
+	b.Text = text
+	b.TextColor3 = THEME.TextPrimary
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 11
+	b.Parent = ActionRow
+	b.MouseButton1Click:Connect(callback)
+	return b
+end
+
+createActionBtn("EXECUTE", 0, 0.34, function()
+	runLoadstring(CodeBox.Text, "EditorTab")
+end)
+
+createActionBtn("CLEAR", 0.34, 0.22, function()
+	CodeBox.Text = ""
+end)
+
+createActionBtn("SAVE", 0.56, 0.22, function()
+	local fname = "script_" .. tostring(os.time()) .. ".lua"
+	safeWriteFile("SquareExecutorScripts/" .. fname, CodeBox.Text)
+	print("[Executor] Saved: " .. fname)
+end)
+
+createActionBtn("COPY", 0.78, 0.22, function()
+	safeClipboard(CodeBox.Text)
+end)
+
+-------------------------------------------------------------------------
+-- 2) تبويب البحث (ScriptBlox Search)
+-------------------------------------------------------------------------
+local SearchBarFrame = Instance.new("Frame")
+SearchBarFrame.Size = UDim2.new(1, -16, 0, 34)
+SearchBarFrame.Position = UDim2.new(0, 8, 0, 8)
+SearchBarFrame.BackgroundColor3 = THEME.BgInput
+SearchBarFrame.BorderSizePixel = 1
+SearchBarFrame.BorderColor3 = THEME.Border
+SearchBarFrame.Parent = SearchPage
+
+local SearchIcon = Instance.new("ImageLabel")
+SearchIcon.Size = UDim2.fromOffset(16, 16)
+SearchIcon.Position = UDim2.new(0, 8, 0.5, -8)
+SearchIcon.BackgroundTransparency = 1
+SearchIcon.Image = ROBLOX_ICONS.Search
+SearchIcon.ImageColor3 = THEME.TextMuted
+SearchIcon.ScaleType = Enum.ScaleType.Fit
+SearchIcon.Parent = SearchBarFrame
+
+local SearchInput = Instance.new("TextBox")
+SearchInput.Name = "SearchInput"
+SearchInput.Size = UDim2.new(1, -115, 1, 0)
+SearchInput.Position = UDim2.new(0, 30, 0, 0)
+SearchInput.BackgroundTransparency = 1
+SearchInput.ClearTextOnFocus = false
+SearchInput.PlaceholderText = "ابحث عن سكربت..."
+SearchInput.PlaceholderColor3 = THEME.TextMuted
+SearchInput.TextColor3 = THEME.TextPrimary
+SearchInput.TextXAlignment = Enum.TextXAlignment.Left
+SearchInput.Font = Enum.Font.Gotham
+SearchInput.TextSize = 12
+SearchInput.Text = ""
+SearchInput.Parent = SearchBarFrame
+
+local SearchBtn = Instance.new("TextButton")
+SearchBtn.Size = UDim2.fromOffset(76, 28)
+SearchBtn.Position = UDim2.new(1, -80, 0, 3)
+SearchBtn.BackgroundColor3 = THEME.BgPanel
+SearchBtn.BorderSizePixel = 1
+SearchBtn.BorderColor3 = THEME.Border
+SearchBtn.Text = "SEARCH"
+SearchBtn.TextColor3 = THEME.TextPrimary
+SearchBtn.Font = Enum.Font.GothamBold
+SearchBtn.TextSize = 11
+SearchBtn.Parent = SearchBarFrame
+
+local ResultsScroll = Instance.new("ScrollingFrame")
+ResultsScroll.Name = "ResultsScroll"
+ResultsScroll.Size = UDim2.new(1, -16, 1, -54)
+ResultsScroll.Position = UDim2.new(0, 8, 0, 48)
+ResultsScroll.BackgroundColor3 = THEME.BgPanel
+ResultsScroll.BorderSizePixel = 1
+ResultsScroll.BorderColor3 = THEME.Border
+ResultsScroll.ScrollBarThickness = 6
+ResultsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ResultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ResultsScroll.Parent = SearchPage
+
+local ResultsGrid = Instance.new("UIGridLayout")
+ResultsGrid.CellSize = UDim2.new(0.48, -4, 0, 86)
+ResultsGrid.CellPadding = UDim2.new(0, 8, 0, 8)
+ResultsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+ResultsGrid.Parent = ResultsScroll
+
+local ResultsPad = Instance.new("UIPadding")
+ResultsPad.PaddingTop = UDim.new(0, 8)
+ResultsPad.PaddingLeft = UDim.new(0, 8)
+ResultsPad.PaddingRight = UDim.new(0, 8)
+ResultsPad.PaddingBottom = UDim.new(0, 8)
+ResultsPad.Parent = ResultsScroll
+
+local function clearSearchResults()
+	for _, child in ipairs(ResultsScroll:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+end
+
+local function addSearchCard(titleText, gameText, scriptSource, iconId)
+	local card = Instance.new("Frame")
+	card.BackgroundColor3 = THEME.BgInput
+	card.BorderSizePixel = 1
+	card.BorderColor3 = THEME.Border
+	card.Parent = ResultsScroll
+
+	local thumb = Instance.new("ImageLabel")
+	thumb.Size = UDim2.fromOffset(58, 58)
+	thumb.Position = UDim2.new(0, 8, 0.5, -29)
+	thumb.BackgroundColor3 = THEME.BgMain
+	thumb.BorderSizePixel = 1
+	thumb.BorderColor3 = THEME.Border
+	thumb.Image = (type(iconId) == "string" and iconId ~= "") and iconId or ROBLOX_ICONS.DefaultThumb
+	thumb.ScaleType = Enum.ScaleType.Crop
+	thumb.Parent = card
+
+	local tLabel = Instance.new("TextLabel")
+	tLabel.Size = UDim2.new(1, -78, 0, 20)
+	tLabel.Position = UDim2.new(0, 72, 0, 8)
+	tLabel.BackgroundTransparency = 1
+	tLabel.Text = tostring(titleText or "Untitled")
+	tLabel.TextColor3 = THEME.TextPrimary
+	tLabel.TextXAlignment = Enum.TextXAlignment.Left
+	tLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	tLabel.Font = Enum.Font.GothamBold
+	tLabel.TextSize = 12
+	tLabel.Parent = card
+
+	local gLabel = Instance.new("TextLabel")
+	gLabel.Size = UDim2.new(1, -78, 0, 16)
+	gLabel.Position = UDim2.new(0, 72, 0, 28)
+	gLabel.BackgroundTransparency = 1
+	gLabel.Text = tostring(gameText or "Universal")
+	gLabel.TextColor3 = THEME.TextMuted
+	gLabel.TextXAlignment = Enum.TextXAlignment.Left
+	gLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	gLabel.Font = Enum.Font.Gotham
+	gLabel.TextSize = 11
+	gLabel.Parent = card
+
+	local runBtn = Instance.new("TextButton")
+	runBtn.Size = UDim2.fromOffset(64, 22)
+	runBtn.Position = UDim2.new(0, 72, 1, -30)
+	runBtn.BackgroundColor3 = THEME.BgPanel
+	runBtn.BorderSizePixel = 1
+	runBtn.BorderColor3 = THEME.Border
+	runBtn.Text = "RUN"
+	runBtn.TextColor3 = THEME.TextPrimary
+	runBtn.Font = Enum.Font.GothamBold
+	runBtn.TextSize = 10
+	runBtn.Parent = card
+
+	local loadBtn = Instance.new("TextButton")
+	loadBtn.Size = UDim2.fromOffset(66, 22)
+	loadBtn.Position = UDim2.new(0, 142, 1, -30)
+	loadBtn.BackgroundColor3 = THEME.BgPanel
+	loadBtn.BorderSizePixel = 1
+	loadBtn.BorderColor3 = THEME.Border
+	loadBtn.Text = "TO EDITOR"
+	loadBtn.TextColor3 = THEME.TextPrimary
+	loadBtn.Font = Enum.Font.GothamBold
+	loadBtn.TextSize = 10
+	loadBtn.Parent = card
+
+	runBtn.MouseButton1Click:Connect(function()
+		runLoadstring(scriptSource, titleText)
+	end)
+
+	loadBtn.MouseButton1Click:Connect(function()
+		CodeBox.Text = tostring(scriptSource or "")
+		for k, pg in pairs(Pages) do
+			pg.Visible = (k == "Executor")
+		end
+	end)
+end
+
+local function performScriptSearch(query)
+	clearSearchResults()
+	local q = tostring(query or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if q == "" then
+		q = "hub"
+	end
+
+	local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
+	local ok, rawBody = pcall(function()
+		return game:HttpGetAsync(url)
+	end)
+	if not ok or not rawBody then
+		warn("[Search] Failed to fetch from ScriptBlox.")
+		return
+	end
+
+	local decOk, decoded = pcall(function()
+		return HttpService:JSONDecode(rawBody)
+	end)
+	if not decOk or not decoded or not decoded.result or type(decoded.result.scripts) ~= "table" then
+		warn("[Search] Invalid JSON response.")
+		return
+	end
+
+	for _, item in ipairs(decoded.result.scripts) do
+		if item.scriptType == "free" and item.isPatched == false then
+			local thumbUrl = ROBLOX_ICONS.DefaultThumb
+			if not item.isUniversal and item.game and item.game.gameId then
+				thumbUrl = "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. tostring(item.game.gameId) .. "&fmt=png&wd=420&ht=420"
+			end
+			addSearchCard(item.title, item.game and item.game.name or "Universal", item.script, thumbUrl)
+		end
+	end
+end
+
+SearchBtn.MouseButton1Click:Connect(function()
+	performScriptSearch(SearchInput.Text)
+end)
+
+SearchInput.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		performScriptSearch(SearchInput.Text)
+	end
+end)
+
+-------------------------------------------------------------------------
+-- 3) تبويب الكونسول (Console Logs)
+-------------------------------------------------------------------------
+local ConsoleScroll = Instance.new("ScrollingFrame")
+ConsoleScroll.Size = UDim2.new(1, -16, 1, -50)
+ConsoleScroll.Position = UDim2.new(0, 8, 0, 8)
+ConsoleScroll.BackgroundColor3 = THEME.BgPanel
+ConsoleScroll.BorderSizePixel = 1
+ConsoleScroll.BorderColor3 = THEME.Border
+ConsoleScroll.ScrollBarThickness = 6
+ConsoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ConsoleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ConsoleScroll.Parent = ConsolePage
+
+local ConsoleList = Instance.new("UIListLayout")
+ConsoleList.Padding = UDim.new(0, 2)
+ConsoleList.SortOrder = Enum.SortOrder.LayoutOrder
+ConsoleList.Parent = ConsoleScroll
+
+local function appendConsoleLine(msgText, msgType)
+	local line = Instance.new("TextLabel")
+	line.Size = UDim2.new(1, -12, 0, 18)
+	line.BackgroundTransparency = 1
+	line.Text = "[" .. tostring(msgType) .. "] " .. tostring(msgText)
+	line.TextColor3 = THEME.TextPrimary
+	line.TextXAlignment = Enum.TextXAlignment.Left
+	line.TextWrapped = true
+	line.AutomaticSize = Enum.AutomaticSize.Y
+	line.Font = Enum.Font.Code
+	line.TextSize = 12
+	line.Parent = ConsoleScroll
+end
+
+LogService.MessageOut:Connect(function(message, messageType)
+	appendConsoleLine(message, messageType.Name)
+end)
+
+local ClearConsoleBtn = Instance.new("TextButton")
+ClearConsoleBtn.Size = UDim2.fromOffset(100, 28)
+ClearConsoleBtn.Position = UDim2.new(0, 8, 1, -34)
+ClearConsoleBtn.BackgroundColor3 = THEME.BgPanel
+ClearConsoleBtn.BorderSizePixel = 1
+ClearConsoleBtn.BorderColor3 = THEME.Border
+ClearConsoleBtn.Text = "CLEAR LOGS"
+ClearConsoleBtn.TextColor3 = THEME.TextPrimary
+ClearConsoleBtn.Font = Enum.Font.GothamBold
+ClearConsoleBtn.TextSize = 11
+ClearConsoleBtn.Parent = ConsolePage
+
+ClearConsoleBtn.MouseButton1Click:Connect(function()
+	for _, child in ipairs(ConsoleScroll:GetChildren()) do
+		if child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+end)
+
+-- ربط السحب الآمن والتبديل لكل من النافذة الرئيسية وزر الفتح/الإغلاق
+enableSafeDrag(TopBar, MainWindow)
+enableSafeDrag(ToggleButton, ToggleButton, function()
+	MainWindow.Visible = not MainWindow.Visible
+	if MainWindow.Visible then
+		clampPositionToViewport(MainWindow, MainWindow.AbsolutePosition.X, MainWindow.AbsolutePosition.Y)
+	end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+	MainWindow.Visible = false
+end)
+
+print("[ImprovedSquareExecutor] Initialized safely within viewport bounds.")
