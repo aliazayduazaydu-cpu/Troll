@@ -249,9 +249,9 @@ local function orbitAndGiveBomb(targetPlayer)
 	local wasAnchored = myRoot.Anchored
 	myRoot.Anchored = true
 
-	local duration = 0.85
+	local duration = 1.3
 	local elapsed = 0
-	local orbitRadius = 1.5
+	local orbitRadius = 0.8
 
 	local conn
 	conn = RunService.RenderStepped:Connect(function(dt)
