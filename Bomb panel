@@ -1,0 +1,699 @@
+-- BOMB PANEL v3 | Modern Minecraft Deepslate & Emerald UI (Mobile Friendly)
+-- Put inside StarterPlayerScripts or StarterGui as a LocalScript
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local TOGGLE_IMAGE_ID = "rbxassetid://83106722960102"
+
+local state = {
+	panelOpen = true,
+	ragdollFlat = false,
+	noclip = false,
+	invisibleFloating = false,
+	viewingBox = false,
+	nameEsp = false,
+	freecam = false,
+	floatingJumpBtnVisible = false,
+	jumpPower = 80,
+	savedCFrame = nil,
+	oldSpotPosition = nil,
+	orbitActive = false,
+}
+
+-- Clamp GUI inside viewport so it never escapes screen corners
+local function clampToScreen(guiObject)
+	local screenSize = camera.ViewportSize
+	local absPos = guiObject.AbsolutePosition
+	local absSize = guiObject.AbsoluteSize
+
+	local maxX = math.max(0, screenSize.X - absSize.X)
+	local maxY = math.max(0, screenSize.Y - absSize.Y)
+
+	guiObject.Position = UDim2.fromOffset(
+		math.clamp(absPos.X, 0, maxX),
+		math.clamp(absPos.Y, 0, maxY)
+	)
+end
+
+-- Distinguish between Drag and Click/Tap
+local function makeDraggable(dragHandle, targetFrame, onClickCallback)
+	local dragging = false
+	local moved = false
+	local dragStart = Vector2.zero
+	local startPos = UDim2.fromOffset(0, 0)
+	local threshold = 6
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			moved = false
+			dragStart = Vector2.new(input.Position.X, input.Position.Y)
+			startPos = targetFrame.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local now = Vector2.new(input.Position.X, input.Position.Y)
+			local delta = now - dragStart
+			if delta.Magnitude > threshold then
+				moved = true
+			end
+			if moved then
+				targetFrame.Position = UDim2.fromOffset(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y)
+				clampToScreen(targetFrame)
+			end
+		end
+	end)
+
+	dragHandle.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging then
+				dragging = false
+				if not moved and onClickCallback then
+					onClickCallback()
+				end
+			end
+		end
+	end)
+end
+
+-- Modern Minecraft Deepslate + Emerald Styling
+local function styleModernMcBlock(guiObj, topColor, bottomColor, strokeColor, radiusPx, strokeThickness)
+	guiObj.BackgroundColor3 = topColor
+	guiObj.BorderSizePixel = 0
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radiusPx or 6)
+	corner.Parent = guiObj
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = strokeColor or Color3.fromRGB(22, 26, 24)
+	stroke.Thickness = strokeThickness or 2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = guiObj
+
+	if bottomColor then
+		local grad = Instance.new("UIGradient")
+		grad.Rotation = 90
+		grad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, topColor),
+			ColorSequenceKeypoint.new(1, bottomColor),
+		})
+		grad.Parent = guiObj
+	end
+end
+
+local function createMcButton(parent, text, size, pos, stateActive)
+	local btn = Instance.new("TextButton")
+	btn.Text = text
+	btn.Size = size
+	btn.Position = pos or UDim2.fromOffset(0, 0)
+	btn.Font = Enum.Font.Arcade
+	btn.TextSize = 13
+	btn.TextColor3 = Color3.fromRGB(245, 252, 246)
+	btn.AutoButtonColor = true
+
+	if stateActive then
+		styleModernMcBlock(btn, Color3.fromRGB(46, 158, 78), Color3.fromRGB(28, 108, 52), Color3.fromRGB(130, 245, 160), 6, 1.8)
+	else
+		styleModernMcBlock(btn, Color3.fromRGB(72, 78, 75), Color3.fromRGB(48, 53, 51), Color3.fromRGB(24, 27, 25), 6, 1.8)
+	end
+
+	btn.Parent = parent
+	return btn
+end
+
+local function setButtonActiveVisual(btn, isActive)
+	local grad = btn:FindFirstChildOfClass("UIGradient")
+	local stroke = btn:FindFirstChildOfClass("UIStroke")
+	if isActive then
+		btn.BackgroundColor3 = Color3.fromRGB(46, 158, 78)
+		if grad then
+			grad.Color = ColorSequence.new(Color3.fromRGB(46, 158, 78), Color3.fromRGB(28, 108, 52))
+		end
+		if stroke then
+			stroke.Color = Color3.fromRGB(135, 248, 165)
+		end
+	else
+		btn.BackgroundColor3 = Color3.fromRGB(72, 78, 75)
+		if grad then
+			grad.Color = ColorSequence.new(Color3.fromRGB(72, 78, 75), Color3.fromRGB(48, 53, 51))
+		end
+		if stroke then
+			stroke.Color = Color3.fromRGB(24, 27, 25)
+		end
+	end
+end
+
+-- Topmost ScreenGui so toggle button stays above other ScreenGuis
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BombPanelGui"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 9999
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Toggle Button (Rounded Minecraft Emerald Frame)
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Name = "ToggleButton"
+toggleBtn.Size = UDim2.fromOffset(48, 48)
+toggleBtn.Position = UDim2.fromOffset(14, 110)
+toggleBtn.Image = TOGGLE_IMAGE_ID
+toggleBtn.ScaleType = Enum.ScaleType.Fit
+styleModernMcBlock(toggleBtn, Color3.fromRGB(42, 54, 46), Color3.fromRGB(26, 34, 29), Color3.fromRGB(80, 215, 115), 12, 2.2)
+toggleBtn.Parent = screenGui
+
+-- Compact Modern Minecraft Panel
+local mainPanel = Instance.new("Frame")
+mainPanel.Name = "BombPanel"
+mainPanel.Size = UDim2.fromOffset(236, 326)
+mainPanel.Position = UDim2.fromOffset(72, 76)
+mainPanel.Visible = state.panelOpen
+styleModernMcBlock(mainPanel, Color3.fromRGB(36, 40, 38), Color3.fromRGB(24, 27, 26), Color3.fromRGB(68, 185, 98), 10, 2.2)
+mainPanel.Parent = screenGui
+
+-- Header Bar (Minecraft Grass/Emerald Top Block)
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, -8, 0, 30)
+titleBar.Position = UDim2.fromOffset(4, 4)
+styleModernMcBlock(titleBar, Color3.fromRGB(48, 148, 74), Color3.fromRGB(30, 102, 50), Color3.fromRGB(20, 48, 28), 7, 1.5)
+titleBar.Parent = mainPanel
+
+local titleBadge = Instance.new("Frame")
+titleBadge.Size = UDim2.fromOffset(10, 10)
+titleBadge.Position = UDim2.fromOffset(9, 10)
+styleModernMcBlock(titleBadge, Color3.fromRGB(165, 255, 185), Color3.fromRGB(85, 215, 120), Color3.fromRGB(20, 50, 25), 2, 1)
+titleBadge.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -28, 1, 0)
+titleLabel.Position = UDim2.fromOffset(25, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.Arcade
+titleLabel.TextSize = 14
+titleLabel.TextColor3 = Color3.fromRGB(242, 255, 244)
+titleLabel.Text = "BOMB PANEL"
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -12, 1, -44)
+scroll.Position = UDim2.fromOffset(6, 39)
+scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 3
+scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 215, 115)
+scroll.CanvasSize = UDim2.fromOffset(0, 412)
+scroll.Parent = mainPanel
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 6)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = scroll
+
+makeDraggable(toggleBtn, toggleBtn, function()
+	state.panelOpen = not state.panelOpen
+	mainPanel.Visible = state.panelOpen
+	if mainPanel.Visible then
+		clampToScreen(mainPanel)
+	end
+end)
+
+makeDraggable(titleBar, mainPanel, nil)
+
+-- Bomb Orbit Transfer (Ultra-close fast orbit around target, then return)
+local function transferBombTool(targetPlayer)
+	if not targetPlayer then return end
+	local myChar = player.Character
+	local bombTool = (myChar and myChar:FindFirstChildWhichIsA("Tool")) or player.Backpack:FindFirstChildWhichIsA("Tool")
+	if bombTool and targetPlayer:FindFirstChild("Backpack") then
+		bombTool.Parent = targetPlayer.Backpack
+	end
+end
+
+local function orbitAndGiveBomb(targetPlayer)
+	if state.orbitActive or not targetPlayer or not targetPlayer.Character then return end
+	local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local myChar = player.Character
+	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not targetRoot or not myRoot then return end
+
+	state.orbitActive = true
+	local returnCF = myRoot.CFrame
+	local wasAnchored = myRoot.Anchored
+	myRoot.Anchored = true
+
+	local duration = 0.85
+	local elapsed = 0
+	local orbitRadius = 1.5
+
+	local conn
+	conn = RunService.RenderStepped:Connect(function(dt)
+		elapsed += dt
+		if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			conn:Disconnect()
+			myRoot.Anchored = wasAnchored
+			myRoot.CFrame = returnCF
+			state.orbitActive = false
+			return
+		end
+
+		local tRoot = targetPlayer.Character.HumanoidRootPart
+		local angle = elapsed * 24
+		local offset = Vector3.new(math.cos(angle) * orbitRadius, 0, math.sin(angle) * orbitRadius)
+		local orbitPos = tRoot.Position + offset
+		myRoot.CFrame = CFrame.lookAt(orbitPos, tRoot.Position)
+
+		if elapsed >= duration then
+			conn:Disconnect()
+			transferBombTool(targetPlayer)
+			myRoot.CFrame = returnCF
+			myRoot.Anchored = wasAnchored
+			state.orbitActive = false
+		end
+	end)
+end
+
+local function getNearestPlayer()
+	local myChar = player.Character
+	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return nil end
+
+	local bestPlayer, bestDist = nil, math.huge
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+			local d = (p.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+			if d < bestDist then
+				bestDist = d
+				bestPlayer = p
+			end
+		end
+	end
+	return bestPlayer
+end
+
+-- 1. Fall Flat on Back, No Stand Up + Movable on Ground
+local fallBtn = createMcButton(scroll, "1. FLAT FALL: OFF", UDim2.new(1, -6, 0, 30))
+fallBtn.LayoutOrder = 1
+fallBtn.MouseButton1Click:Connect(function()
+	state.ragdollFlat = not state.ragdollFlat
+	fallBtn.Text = state.ragdollFlat and "1. FLAT FALL: ON" or "1. FLAT FALL: OFF"
+	setButtonActiveVisual(fallBtn, state.ragdollFlat)
+
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if hum and root then
+		if state.ragdollFlat then
+			hum.PlatformStand = true
+			hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+			root.CFrame = root.CFrame * CFrame.Angles(math.rad(-85), 0, 0)
+		else
+			hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+			hum.PlatformStand = false
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+	end
+end)
+
+-- 2. Give Bomb to Nearest Player (Ultra-close orbit + return)
+local nearBombBtn = createMcButton(scroll, "2. BOMB -> NEAREST", UDim2.new(1, -6, 0, 30))
+nearBombBtn.LayoutOrder = 2
+nearBombBtn.MouseButton1Click:Connect(function()
+	local target = getNearestPlayer()
+	orbitAndGiveBomb(target)
+end)
+
+-- 3. Player Selector Popup (📊) - Pictures Only, Auto-Hide on Select
+local playerPickerFrame = Instance.new("Frame")
+playerPickerFrame.Size = UDim2.fromOffset(188, 148)
+playerPickerFrame.Position = UDim2.fromOffset(115, 115)
+playerPickerFrame.Visible = false
+styleModernMcBlock(playerPickerFrame, Color3.fromRGB(34, 38, 36), Color3.fromRGB(22, 25, 24), Color3.fromRGB(80, 215, 115), 8, 2)
+playerPickerFrame.Parent = screenGui
+makeDraggable(playerPickerFrame, playerPickerFrame, nil)
+
+local pickerPadding = Instance.new("UIPadding")
+pickerPadding.PaddingTop = UDim.new(0, 6)
+pickerPadding.PaddingLeft = UDim.new(0, 6)
+pickerPadding.Parent = playerPickerFrame
+
+local pickerGrid = Instance.new("UIGridLayout")
+pickerGrid.CellSize = UDim2.fromOffset(52, 52)
+pickerGrid.CellPadding = UDim2.fromOffset(6, 6)
+pickerGrid.Parent = playerPickerFrame
+
+local function refreshPlayerPicker()
+	for _, child in ipairs(playerPickerFrame:GetChildren()) do
+		if child:IsA("ImageButton") then
+			child:Destroy()
+		end
+	end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player then
+			local thumb = Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+			local pBtn = Instance.new("ImageButton")
+			pBtn.Image = thumb
+			styleModernMcBlock(pBtn, Color3.fromRGB(68, 74, 71), Color3.fromRGB(45, 50, 48), Color3.fromRGB(24, 27, 25), 6, 1.8)
+			pBtn.Parent = playerPickerFrame
+
+			pBtn.MouseButton1Click:Connect(function()
+				playerPickerFrame.Visible = false
+				orbitAndGiveBomb(p)
+			end)
+		end
+	end
+end
+
+local pickBombBtn = createMcButton(scroll, "3. PICK BOMB  📊", UDim2.new(1, -6, 0, 30))
+pickBombBtn.LayoutOrder = 3
+pickBombBtn.MouseButton1Click:Connect(function()
+	refreshPlayerPicker()
+	playerPickerFrame.Visible = not playerPickerFrame.Visible
+	if playerPickerFrame.Visible then
+		clampToScreen(playerPickerFrame)
+	end
+end)
+
+-- 4. External Floating Jump Button + Power Adjuster
+local externalJumpBtn = createMcButton(screenGui, "JUMP", UDim2.fromOffset(74, 44), UDim2.new(1, -94, 1, -165), true)
+externalJumpBtn.Visible = false
+makeDraggable(externalJumpBtn, externalJumpBtn, function()
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.UseJumpPower = true
+		hum.JumpPower = state.jumpPower
+		hum.Jump = true
+	end
+end)
+
+local jumpRow = Instance.new("Frame")
+jumpRow.Size = UDim2.new(1, -6, 0, 32)
+jumpRow.BackgroundTransparency = 1
+jumpRow.LayoutOrder = 4
+jumpRow.Parent = scroll
+
+local jumpBtn = createMcButton(jumpRow, "4. JUMP BTN", UDim2.new(0.46, -2, 1, 0), UDim2.fromOffset(0, 0))
+local minusJumpBtn = createMcButton(jumpRow, "-", UDim2.new(0.16, -2, 1, 0), UDim2.fromScale(0.48, 0))
+local jumpValLabel = Instance.new("TextLabel")
+jumpValLabel.Size = UDim2.new(0.20, -2, 1, 0)
+jumpValLabel.Position = UDim2.fromScale(0.65, 0)
+jumpValLabel.Font = Enum.Font.Arcade
+jumpValLabel.TextSize = 12
+jumpValLabel.TextColor3 = Color3.fromRGB(165, 255, 185)
+jumpValLabel.Text = tostring(state.jumpPower)
+styleModernMcBlock(jumpValLabel, Color3.fromRGB(26, 30, 28), Color3.fromRGB(18, 21, 20), Color3.fromRGB(52, 130, 74), 6, 1.5)
+jumpValLabel.Parent = jumpRow
+
+local plusJumpBtn = createMcButton(jumpRow, "+", UDim2.new(0.15, 0, 1, 0), UDim2.fromScale(0.85, 0))
+
+local function syncJumpPower()
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.UseJumpPower = true
+		hum.JumpPower = state.jumpPower
+	end
+	jumpValLabel.Text = tostring(state.jumpPower)
+end
+
+minusJumpBtn.MouseButton1Click:Connect(function()
+	state.jumpPower = math.max(25, state.jumpPower - 15)
+	syncJumpPower()
+end)
+
+plusJumpBtn.MouseButton1Click:Connect(function()
+	state.jumpPower = math.min(250, state.jumpPower + 15)
+	syncJumpPower()
+end)
+
+jumpBtn.MouseButton1Click:Connect(function()
+	syncJumpPower()
+	state.floatingJumpBtnVisible = not state.floatingJumpBtnVisible
+	externalJumpBtn.Visible = state.floatingJumpBtnVisible
+	setButtonActiveVisual(jumpBtn, state.floatingJumpBtnVisible)
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Jump = true
+	end
+end)
+
+-- 5. Smooth Noclip
+local noclipBtn = createMcButton(scroll, "5. NOCLIP: OFF", UDim2.new(1, -6, 0, 30))
+noclipBtn.LayoutOrder = 5
+noclipBtn.MouseButton1Click:Connect(function()
+	state.noclip = not state.noclip
+	noclipBtn.Text = state.noclip and "5. NOCLIP: ON" or "5. NOCLIP: OFF"
+	setButtonActiveVisual(noclipBtn, state.noclip)
+end)
+
+-- 6. Hide Far (Floating Player) + Transparent Glass Box at OLD Position + View Old Box
+local glassBox = Instance.new("Part")
+glassBox.Name = "BombPanelOldSpotBox"
+glassBox.Size = Vector3.new(7, 7, 7)
+glassBox.Anchored = true
+glassBox.CanCollide = false
+glassBox.Transparency = 0.72
+glassBox.Material = Enum.Material.Glass
+glassBox.Color = Color3.fromRGB(115, 245, 160)
+glassBox.Parent = nil
+
+local farAnchorPos = Vector3.new(0, 100000, 0)
+local boxYaw, boxPitch = 0, -0.25
+
+local invisBtn = createMcButton(scroll, "6. HIDE FAR: OFF", UDim2.new(1, -6, 0, 30))
+invisBtn.LayoutOrder = 6
+
+local viewBoxBtn = createMcButton(scroll, "VIEW OLD BOX: OFF", UDim2.new(1, -6, 0, 28))
+viewBoxBtn.LayoutOrder = 7
+
+local function setFloatingPlayer(enabled)
+	local char = player.Character
+	if not char then return end
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.Anchored = enabled
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+invisBtn.MouseButton1Click:Connect(function()
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	if not state.invisibleFloating then
+		state.savedCFrame = root.CFrame
+		state.oldSpotPosition = root.Position
+
+		-- Place transparent box at the OLD spot you left
+		glassBox.CFrame = CFrame.new(state.oldSpotPosition)
+		glassBox.Parent = workspace
+
+		-- Teleport player far away and keep floating in air
+		root.CFrame = CFrame.new(farAnchorPos)
+		setFloatingPlayer(true)
+
+		state.invisibleFloating = true
+		invisBtn.Text = "6. HIDE FAR: ON"
+		setButtonActiveVisual(invisBtn, true)
+	else
+		setFloatingPlayer(false)
+		glassBox.Parent = nil
+		state.viewingBox = false
+		viewBoxBtn.Text = "VIEW OLD BOX: OFF"
+		setButtonActiveVisual(viewBoxBtn, false)
+
+		camera.CameraType = Enum.CameraType.Custom
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			camera.CameraSubject = hum
+		end
+
+		if state.savedCFrame then
+			root.CFrame = state.savedCFrame
+		end
+		state.invisibleFloating = false
+		invisBtn.Text = "6. HIDE FAR: OFF"
+		setButtonActiveVisual(invisBtn, false)
+	end
+end)
+
+viewBoxBtn.MouseButton1Click:Connect(function()
+	if not state.invisibleFloating or not state.oldSpotPosition then return end
+	state.viewingBox = not state.viewingBox
+	viewBoxBtn.Text = state.viewingBox and "VIEW OLD BOX: ON" or "VIEW OLD BOX: OFF"
+	setButtonActiveVisual(viewBoxBtn, state.viewingBox)
+
+	if state.viewingBox then
+		state.freecam = false
+		boxYaw, boxPitch = 0, -0.25
+		camera.CameraType = Enum.CameraType.Scriptable
+	else
+		camera.CameraType = Enum.CameraType.Custom
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			camera.CameraSubject = hum
+		end
+	end
+end)
+
+-- 7. Name-Only ESP
+local espFolder = Instance.new("Folder")
+espFolder.Name = "NameOnlyESP"
+espFolder.Parent = screenGui
+
+local function updateNameEsp()
+	espFolder:ClearAllChildren()
+	if not state.nameEsp then return end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("Head") then
+			local bb = Instance.new("BillboardGui")
+			bb.Size = UDim2.fromOffset(120, 24)
+			bb.StudsOffset = Vector3.new(0, 2.5, 0)
+			bb.AlwaysOnTop = true
+			bb.Adornee = p.Character.Head
+			bb.Parent = espFolder
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.fromScale(1, 1)
+			lbl.BackgroundTransparency = 1
+			lbl.Font = Enum.Font.Arcade
+			lbl.TextSize = 13
+			lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+			lbl.TextStrokeTransparency = 0
+			lbl.Text = p.Name
+			lbl.Parent = bb
+		end
+	end
+end
+
+local espBtn = createMcButton(scroll, "7. NAME ESP: OFF", UDim2.new(1, -6, 0, 30))
+espBtn.LayoutOrder = 8
+espBtn.MouseButton1Click:Connect(function()
+	state.nameEsp = not state.nameEsp
+	espBtn.Text = state.nameEsp and "7. NAME ESP: ON" or "7. NAME ESP: OFF"
+	setButtonActiveVisual(espBtn, state.nameEsp)
+	updateNameEsp()
+end)
+
+-- 8. Smooth Mobile Freecam Pad
+local freecamPad = Instance.new("Frame")
+freecamPad.Size = UDim2.fromOffset(152, 104)
+freecamPad.Position = UDim2.new(0, 14, 1, -118)
+freecamPad.Visible = false
+freecamPad.BackgroundTransparency = 1
+freecamPad.Parent = screenGui
+
+local moveDir = Vector3.zero
+local function bindHoldButton(btn, dirVec)
+	btn.MouseButton1Down:Connect(function()
+		moveDir = moveDir + dirVec
+	end)
+	btn.MouseButton1Up:Connect(function()
+		moveDir = moveDir - dirVec
+	end)
+end
+
+local fwdBtn = createMcButton(freecamPad, "FWD", UDim2.fromOffset(48, 32), UDim2.fromOffset(52, 0))
+local backBtn = createMcButton(freecamPad, "BCK", UDim2.fromOffset(48, 32), UDim2.fromOffset(52, 70))
+local leftBtn = createMcButton(freecamPad, "LFT", UDim2.fromOffset(48, 32), UDim2.fromOffset(0, 35))
+local rightBtn = createMcButton(freecamPad, "RGT", UDim2.fromOffset(48, 32), UDim2.fromOffset(104, 35))
+local upBtn = createMcButton(freecamPad, "UP", UDim2.fromOffset(48, 30), UDim2.fromOffset(52, 36))
+
+bindHoldButton(fwdBtn, Vector3.new(0, 0, -1))
+bindHoldButton(backBtn, Vector3.new(0, 0, 1))
+bindHoldButton(leftBtn, Vector3.new(-1, 0, 0))
+bindHoldButton(rightBtn, Vector3.new(1, 0, 0))
+bindHoldButton(upBtn, Vector3.new(0, 1, 0))
+
+local freecamBtn = createMcButton(scroll, "8. FREECAM: OFF", UDim2.new(1, -6, 0, 30))
+freecamBtn.LayoutOrder = 9
+
+local fcPos = Vector3.zero
+local fcYaw, fcPitch = 0, 0
+
+freecamBtn.MouseButton1Click:Connect(function()
+	state.freecam = not state.freecam
+	freecamBtn.Text = state.freecam and "8. FREECAM: ON" or "8. FREECAM: OFF"
+	setButtonActiveVisual(freecamBtn, state.freecam)
+	freecamPad.Visible = state.freecam
+
+	if state.freecam then
+		state.viewingBox = false
+		viewBoxBtn.Text = "VIEW OLD BOX: OFF"
+		setButtonActiveVisual(viewBoxBtn, false)
+		fcPos = camera.CFrame.Position
+		local _, y, x = camera.CFrame:ToEulerAnglesYXZ()
+		fcYaw, fcPitch = y, x
+		camera.CameraType = Enum.CameraType.Scriptable
+	else
+		moveDir = Vector3.zero
+		camera.CameraType = Enum.CameraType.Custom
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			camera.CameraSubject = hum
+		end
+	end
+end)
+
+-- Smooth Touch Look for Freecam and Old Spot Box View
+UserInputService.TouchMoved:Connect(function(touch, processed)
+	if processed then return end
+	if touch.Position.X > camera.ViewportSize.X * 0.4 then
+		if state.freecam then
+			fcYaw = fcYaw - touch.Delta.X * 0.0055
+			fcPitch = math.clamp(fcPitch - touch.Delta.Y * 0.0055, math.rad(-82), math.rad(82))
+		elseif state.viewingBox then
+			boxYaw = boxYaw - touch.Delta.X * 0.0055
+			boxPitch = math.clamp(boxPitch - touch.Delta.Y * 0.0055, math.rad(-82), math.rad(82))
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+	if state.ragdollFlat and hum and root and not state.invisibleFloating then
+		hum.PlatformStand = true
+		if hum.MoveDirection.Magnitude > 0 then
+			root.CFrame = root.CFrame + (hum.MoveDirection * 18 * dt)
+		end
+	end
+
+	if state.noclip and char then
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end
+
+	if state.freecam then
+		local rot = CFrame.fromEulerAnglesYXZ(fcPitch, fcYaw, 0)
+		local dir = (rot:VectorToWorldSpace(Vector3.new(moveDir.X, 0, moveDir.Z))) + Vector3.new(0, moveDir.Y, 0)
+		if dir.Magnitude > 0 then
+			fcPos = fcPos + dir.Unit * 46 * dt
+		end
+		camera.CFrame = CFrame.new(fcPos) * rot
+	elseif state.viewingBox and state.invisibleFloating and state.oldSpotPosition then
+		local rot = CFrame.fromEulerAnglesYXZ(boxPitch, boxYaw, 0)
+		local focus = state.oldSpotPosition
+		local camOffset = rot:VectorToWorldSpace(Vector3.new(0, 0, 10))
+		camera.CFrame = CFrame.lookAt(focus + camOffset, focus)
+	end
+end)
+
+Players.PlayerAdded:Connect(updateNameEsp)
+Players.PlayerRemoving:Connect(updateNameEsp)
